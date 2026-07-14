@@ -42,6 +42,10 @@ The Flightradar24 and ADS-B Exchange integrations are outbound tracker links onl
 - Location permission
 - Notification permission on Android 13 or newer
 
+## Downloads
+
+Android APKs and iOS build artifacts are published on the GitHub Releases page. The iOS IPA is an unsigned device build: it must be signed with the user's own Apple identity or a valid provisioning profile before an iPhone or iPad will install it. This does not require publishing MAR in the App Store.
+
 ## Build from source
 
 ### Android
