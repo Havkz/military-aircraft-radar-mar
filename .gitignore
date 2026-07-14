@@ -10,6 +10,7 @@ local.properties
 *.iml
 
 # Packaged applications and signing material
+dist/
 *.apk
 *.aab
 *.apks
