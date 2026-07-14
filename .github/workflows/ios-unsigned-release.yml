@@ -1,6 +1,12 @@
 name: Build unsigned iOS IPA
 
 on:
+  push:
+    branches:
+      - agent/public-repository-readiness
+    paths:
+      - ios/**
+      - .github/workflows/ios-unsigned-release.yml
   workflow_dispatch:
     inputs:
       release_tag:
@@ -61,8 +67,9 @@ jobs:
       - name: Attach IPA to GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag || 'v4.0.0-beta.1' }}
         run: >-
-          gh release upload '${{ inputs.release_tag }}'
+          gh release upload "$RELEASE_TAG"
           ios/package/MAR-iOS-Unsigned-4.0.ipa
           ios/package/MAR-iOS-Unsigned-4.0.sha256
           --repo '${{ github.repository }}' --clobber
