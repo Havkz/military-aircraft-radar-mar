@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a reproducible problem in MAR
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Do not include precise locations, credentials, or other personal data.
+  - type: input
+    id: version
+    attributes:
+      label: MAR version
+      placeholder: 3.4
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: Android version and device
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs or screenshots
+      description: Remove exact coordinates, identifiers, and personal data first.

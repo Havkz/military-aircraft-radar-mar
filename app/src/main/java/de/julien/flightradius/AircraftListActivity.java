@@ -18,12 +18,12 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class AircraftListActivity extends Activity {
-    private static final int CYAN = Color.rgb(0, 245, 255);
-    private static final int VIOLET = Color.rgb(176, 38, 255);
+    private static final int GREEN = Color.rgb(79, 138, 101);
+    private static final int BLUE = Color.rgb(82, 122, 163);
     private final Handler handler = new Handler(Looper.getMainLooper());
     private LinearLayout contacts;
     private int background, surface, text, muted;
-    private boolean dark, de;
+    private boolean dark;
     private String lastJson = "";
 
     private final Runnable refresh = new Runnable() {
@@ -32,11 +32,11 @@ public class AircraftListActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
-        dark = AppPreferences.isDark(this); de = AppPreferences.isGerman(this);
-        background = dark ? Color.BLACK : Color.rgb(239, 247, 250);
-        surface = dark ? Color.rgb(5, 10, 15) : Color.WHITE;
-        text = dark ? Color.rgb(230, 250, 255) : Color.rgb(7, 25, 34);
-        muted = dark ? Color.rgb(119, 153, 164) : Color.rgb(70, 96, 107);
+        dark = AppPreferences.isDark(this); L10n.applyDirection(this);
+        background = dark ? Color.rgb(0, 4, 8) : Color.rgb(244, 246, 243);
+        surface = dark ? Color.rgb(10, 14, 19) : Color.WHITE;
+        text = dark ? Color.rgb(228, 232, 235) : Color.rgb(21, 30, 39);
+        muted = dark ? Color.rgb(139, 149, 156) : Color.rgb(94, 105, 113);
         buildUi();
     }
 
@@ -44,12 +44,12 @@ public class AircraftListActivity extends Activity {
         ScrollView scroll = new ScrollView(this); scroll.setBackgroundColor(background);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(22), dp(20), dp(22), dp(30)); scroll.addView(root);
-        Button back = button("‹  " + (de ? "RADAR" : "RADAR")); back.setOnClickListener(v -> finish());
+        Button back = button("‹  RADAR"); back.setOnClickListener(v -> finish());
         root.addView(back, new LinearLayout.LayoutParams(-1, dp(48)));
-        TextView title = label(de ? "LIVE-FLUGZEUGE" : "LIVE AIRCRAFT", 29, text, Typeface.BOLD);
+        TextView title = label(L10n.t(this, "live_aircraft"), 29, text, Typeface.BOLD);
         title.setPadding(0, dp(18), 0, 0); root.addView(title);
-        TextView subtitle = label(de ? "MILITÄRKONTAKTE IM GEWÄHLTEN RADIUS" : "MILITARY CONTACTS IN SELECTED RADIUS",
-                11, CYAN, Typeface.BOLD); subtitle.setLetterSpacing(0.1f); root.addView(subtitle);
+        TextView subtitle = label(L10n.t(this, "military_in_radius"),
+                11, GREEN, Typeface.BOLD); subtitle.setLetterSpacing(0.1f); root.addView(subtitle);
         contacts = new LinearLayout(this); contacts.setOrientation(LinearLayout.VERTICAL);
         contacts.setPadding(0, dp(18), 0, 0); root.addView(contacts);
         setContentView(scroll);
@@ -61,8 +61,7 @@ public class AircraftListActivity extends Activity {
         try {
             JSONArray array = new JSONArray(json);
             if (array.length() == 0) {
-                TextView empty = label(de ? "Keine militärischen Kontakte erkannt.\nDer Live-Scan läuft weiter."
-                        : "No military contacts detected.\nLive scan continues.", 15, muted, Typeface.NORMAL);
+                TextView empty = label(L10n.t(this, "empty_list"), 15, muted, Typeface.NORMAL);
                 empty.setGravity(Gravity.CENTER); empty.setPadding(0, dp(70), 0, 0); contacts.addView(empty); return;
             }
             for (int i = 0; i < array.length(); i++) addAircraft(array.getJSONObject(i), i);
@@ -72,8 +71,8 @@ public class AircraftListActivity extends Activity {
     private void addAircraft(JSONObject plane, int index) {
         LinearLayout card = card(); card.setOrientation(LinearLayout.VERTICAL);
         String callsign = plane.optString("callsign", "");
-        TextView name = label(callsign.isEmpty() ? (de ? "OHNE CALLSIGN" : "NO CALLSIGN") : callsign,
-                21, CYAN, Typeface.BOLD); card.addView(name);
+        TextView name = label(callsign.isEmpty() ? L10n.t(this, "no_callsign") : callsign,
+                21, BLUE, Typeface.BOLD); card.addView(name);
         String type = plane.optString("type", "—"); String reg = plane.optString("registration", "—");
         card.addView(label(type + "  •  " + reg, 12, muted, Typeface.BOLD));
         double distance = plane.optDouble("distance_km", Double.NaN);
@@ -95,13 +94,13 @@ public class AircraftListActivity extends Activity {
     private LinearLayout card() {
         LinearLayout v = new LinearLayout(this); v.setPadding(dp(18), dp(16), dp(18), dp(16));
         GradientDrawable bg = new GradientDrawable(); bg.setColor(surface); bg.setCornerRadius(dp(18));
-        bg.setStroke(dp(1), dark ? Color.rgb(0, 80, 89) : Color.rgb(190, 220, 227)); v.setBackground(bg); return v;
+        bg.setStroke(dp(1), dark ? Color.rgb(38, 53, 65) : Color.rgb(208, 215, 211)); v.setBackground(bg); return v;
     }
     private TextView label(String s, float z, int c, int style) {
         TextView v = new TextView(this); v.setText(s); v.setTextSize(z); v.setTextColor(c);
         v.setTypeface(Typeface.create("sans-serif", style)); return v;
     }
-    private Button button(String s) { Button b = new Button(this); b.setText(s); b.setTextColor(CYAN);
+    private Button button(String s) { Button b = new Button(this); b.setText(s); b.setTextColor(BLUE);
         b.setTextSize(12); b.setTypeface(Typeface.DEFAULT_BOLD); b.setAllCaps(false); b.setStateListAnimator(null);
         b.setBackground(card().getBackground()); return b; }
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }

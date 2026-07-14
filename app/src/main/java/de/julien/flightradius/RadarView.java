@@ -27,13 +27,13 @@ public class RadarView extends View {
         setLayerType(View.LAYER_TYPE_SOFTWARE, null);
         grid.setStyle(Paint.Style.STROKE);
         grid.setStrokeWidth(dp(1));
-        grid.setColor(Color.rgb(0, 67, 74));
+        grid.setColor(Color.rgb(45, 65, 78));
         glow.setStyle(Paint.Style.STROKE);
         glow.setStrokeWidth(dp(2));
-        glow.setColor(Color.rgb(0, 245, 255));
-        glow.setShadowLayer(dp(10), 0, 0, Color.rgb(0, 245, 255));
-        target.setColor(Color.rgb(176, 38, 255));
-        target.setShadowLayer(dp(12), 0, 0, Color.rgb(176, 38, 255));
+        glow.setColor(Color.rgb(79, 138, 101));
+        glow.setShadowLayer(dp(3), 0, 0, Color.rgb(79, 138, 101));
+        target.setColor(Color.rgb(217, 130, 69));
+        target.setShadowLayer(dp(4), 0, 0, Color.rgb(217, 130, 69));
 
         animator = ValueAnimator.ofFloat(0f, 360f);
         animator.setDuration(4200);
@@ -64,7 +64,7 @@ public class RadarView extends View {
         float radius = Math.min(getWidth(), getHeight()) * 0.43f;
 
         Paint panel = new Paint(Paint.ANTI_ALIAS_FLAG);
-        panel.setColor(darkMode ? Color.rgb(2, 8, 12) : Color.rgb(226, 241, 245));
+        panel.setColor(darkMode ? Color.rgb(7, 12, 17) : Color.rgb(235, 239, 236));
         canvas.drawRoundRect(0, 0, getWidth(), getHeight(), dp(24), dp(24), panel);
 
         for (int i = 1; i <= 4; i++) canvas.drawCircle(cx, cy, radius * i / 4f, grid);
@@ -75,7 +75,7 @@ public class RadarView extends View {
         canvas.save();
         canvas.rotate(angle, cx, cy);
         sweep.setShader(new LinearGradient(cx, cy, cx + radius, cy,
-                new int[]{Color.TRANSPARENT, Color.argb(65, 0, 245, 255), Color.rgb(0, 245, 255)},
+                new int[]{Color.TRANSPARENT, Color.argb(38, 82, 122, 163), Color.rgb(79, 138, 101)},
                 null, Shader.TileMode.CLAMP));
         Path beam = new Path();
         beam.moveTo(cx, cy);
