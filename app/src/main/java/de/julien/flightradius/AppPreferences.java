@@ -16,6 +16,7 @@ final class AppPreferences {
     static final String KEY_VIBRATION = "vibration";
     static final String KEY_TRACKER = "tracker";
     static final String KEY_RUNNING = "service_running";
+    static final String KEY_MONITORING_ENABLED = "monitoring_enabled";
     static final String KEY_LIVE_COUNT = "live_count";
     static final String KEY_LAST_SCAN = "last_scan";
     static final String KEY_CONNECTION = "connection";
@@ -23,6 +24,7 @@ final class AppPreferences {
     static final String KEY_NEAREST_DISTANCE_KM = "nearest_distance_km";
     static final String KEY_NEAREST_ALTITUDE_FT = "nearest_altitude_ft";
     static final String KEY_AIRCRAFT_JSON = "aircraft_json";
+    static final String KEY_APP_VERSION = "app_version";
     static final int DEFAULT_RADIUS_KM = 50;
 
     private AppPreferences() { }
@@ -60,7 +62,7 @@ final class AppPreferences {
     }
 
     static String altitude(Context context, double feet) {
-        if (Double.isNaN(feet)) return isGerman(context) ? "Höhe unbekannt" : "altitude unknown";
+        if (Double.isNaN(feet)) return L10n.t(context, "altitude_unknown");
         if (usesMetric(context)) return String.format(Locale.GERMANY, "%,.0f m", feet * 0.3048);
         return String.format(Locale.US, "%,.0f ft", feet);
     }

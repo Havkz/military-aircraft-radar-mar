@@ -3,6 +3,7 @@ package de.julien.flightradius;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.app.Activity;
+import android.app.NotificationManager;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -18,8 +19,10 @@ import android.widget.TextView;
 public class SplashActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        clearStaleNotificationsAfterUpdate();
+        L10n.applyDirection(this);
         boolean dark = AppPreferences.isDark(this);
-        int background = dark ? Color.BLACK : Color.rgb(239, 247, 250);
+        int background = dark ? Color.rgb(0, 4, 8) : Color.rgb(244, 246, 243);
         getWindow().setStatusBarColor(background);
         getWindow().setNavigationBarColor(background);
 
@@ -35,14 +38,14 @@ public class SplashActivity extends Activity {
         root.addView(logo, new LinearLayout.LayoutParams(dp(150), dp(150)));
 
         TextView mar = new TextView(this);
-        mar.setText("MAR"); mar.setTextSize(42); mar.setTextColor(Color.rgb(0, 245, 255));
+        mar.setText("MAR"); mar.setTextSize(42); mar.setTextColor(Color.rgb(79, 138, 101));
         mar.setTypeface(Typeface.DEFAULT_BOLD); mar.setLetterSpacing(0.22f); mar.setGravity(Gravity.CENTER);
         mar.setAlpha(0f);
         root.addView(mar);
 
         TextView name = new TextView(this);
-        name.setText("MILITARY AIRCRAFT RADAR"); name.setTextSize(11);
-        name.setTextColor(dark ? Color.rgb(150, 177, 185) : Color.rgb(65, 91, 101));
+        name.setText(L10n.t(this, "app_title").replace('\n', ' ')); name.setTextSize(11);
+        name.setTextColor(dark ? Color.rgb(139, 149, 156) : Color.rgb(94, 105, 113));
         name.setTypeface(Typeface.DEFAULT_BOLD); name.setLetterSpacing(0.12f); name.setGravity(Gravity.CENTER);
         name.setPadding(0, dp(7), 0, 0); name.setAlpha(0f);
         root.addView(name);
@@ -63,6 +66,25 @@ public class SplashActivity extends Activity {
             overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
             finish();
         }, 1150L);
+    }
+
+    private void clearStaleNotificationsAfterUpdate() {
+        int currentVersion;
+        try {
+            currentVersion = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+        } catch (Exception ignored) {
+            return;
+        }
+        android.content.SharedPreferences prefs = AppPreferences.get(this);
+        if (prefs.getInt(AppPreferences.KEY_APP_VERSION, 0) == currentVersion) return;
+        getSystemService(NotificationManager.class).cancelAll();
+        stopService(new Intent(this, MonitorService.class));
+        prefs.edit()
+                .putInt(AppPreferences.KEY_APP_VERSION, currentVersion)
+                .putBoolean(AppPreferences.KEY_RUNNING, false)
+                .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
+                .putString(AppPreferences.KEY_CONNECTION, "standby")
+                .apply();
     }
 
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }

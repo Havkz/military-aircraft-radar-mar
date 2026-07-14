@@ -1,0 +1,68 @@
+name: Build unsigned iOS IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub release tag receiving the unsigned IPA
+        required: true
+        default: v4.0.0-beta.1
+
+permissions:
+  contents: write
+
+jobs:
+  build-unsigned-ipa:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build unsigned device application
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project MAR.xcodeproj \
+            -scheme MAR \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Package IPA
+        working-directory: ios
+        run: |
+          APP_PATH=$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)
+          test -n "$APP_PATH"
+          rm -rf package
+          mkdir -p package/Payload
+          cp -R "$APP_PATH" package/Payload/MAR.app
+          cd package
+          zip -qry MAR-iOS-Unsigned-4.0.ipa Payload
+          shasum -a 256 MAR-iOS-Unsigned-4.0.ipa > MAR-iOS-Unsigned-4.0.sha256
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAR-iOS-Unsigned-4.0
+          path: |
+            ios/package/MAR-iOS-Unsigned-4.0.ipa
+            ios/package/MAR-iOS-Unsigned-4.0.sha256
+
+      - name: Attach IPA to GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release upload '${{ inputs.release_tag }}'
+          ios/package/MAR-iOS-Unsigned-4.0.ipa
+          ios/package/MAR-iOS-Unsigned-4.0.sha256
+          --repo '${{ github.repository }}' --clobber

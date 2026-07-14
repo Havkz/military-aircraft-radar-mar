@@ -1,0 +1,25 @@
+name: iOS build validation
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulator-build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Build for iOS Simulator
+        working-directory: ios
+        run: >-
+          xcodebuild -project MAR.xcodeproj -scheme MAR
+          -sdk iphonesimulator -configuration Release
+          CODE_SIGNING_ALLOWED=NO build

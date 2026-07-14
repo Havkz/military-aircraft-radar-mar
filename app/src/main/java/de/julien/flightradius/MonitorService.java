@@ -34,7 +34,7 @@ import java.util.Locale;
 import java.util.Set;
 
 public class MonitorService extends Service implements LocationListener {
-    private static final String CHANNEL_STATUS = "monitor_status_v3";
+    private static final String CHANNEL_STATUS = "monitor_status_v4";
     private static final String CHANNEL_ALERTS = "military_alerts_v3";
     private static final String ACTION_STOP = "de.julien.flightradius.STOP";
     private static final String ACTION_RESEND_DISMISSED = "de.julien.flightradius.RESEND_DISMISSED";
@@ -43,11 +43,13 @@ public class MonitorService extends Service implements LocationListener {
     private static final int MILITARY_FLAG = 1;
 
     private final Set<String> aircraftAlreadyInside = new HashSet<>();
+    private final Set<Integer> aircraftNotificationIds = new HashSet<>();
     private HandlerThread workerThread;
     private Handler worker;
     private LocationManager locationManager;
     private volatile Location latestLocation;
     private static volatile boolean running;
+    private boolean pollingScheduled;
 
     static boolean isRunning() { return running; }
 
@@ -65,10 +67,9 @@ public class MonitorService extends Service implements LocationListener {
     public void onCreate() {
         super.onCreate();
         createChannels();
-        boolean de = AppPreferences.isGerman(this);
         startForeground(STATUS_NOTIFICATION_ID,
                 statusNotification("INITIALIZING",
-                        de ? "Warte auf Standortsignal …" : "Waiting for location signal …", 0));
+                        L10n.t(this, "waiting_location"), 0));
 
         workerThread = new HandlerThread("military-live-monitor");
         workerThread.start();
@@ -79,13 +80,19 @@ public class MonitorService extends Service implements LocationListener {
             registerProvider(LocationManager.NETWORK_PROVIDER);
         }
         running = true;
-        AppPreferences.get(this).edit().putBoolean(AppPreferences.KEY_RUNNING, true).apply();
-        worker.post(pollTask);
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            AppPreferences.get(this).edit()
+                    .putBoolean(AppPreferences.KEY_RUNNING, false)
+                    .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
+                    .apply();
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+        if (!AppPreferences.get(this).getBoolean(AppPreferences.KEY_RUNNING, false)) {
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -103,19 +110,45 @@ public class MonitorService extends Service implements LocationListener {
                         DISMISSED_RESEND_DELAY_MS);
             }
         }
-        return START_STICKY;
+        if (!pollingScheduled && worker != null) {
+            pollingScheduled = true;
+            worker.post(pollTask);
+        }
+        return START_NOT_STICKY;
     }
 
     @Override public IBinder onBind(Intent intent) { return null; }
 
     @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        AppPreferences.get(this).edit()
+                .putBoolean(AppPreferences.KEY_RUNNING, false)
+                .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
+                .putString(AppPreferences.KEY_CONNECTION, "standby")
+                .apply();
+        getSystemService(NotificationManager.class).cancelAll();
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        stopSelf();
+        super.onTaskRemoved(rootIntent);
+    }
+
+    @Override
     public void onDestroy() {
         running = false;
-        AppPreferences.get(this).edit().putBoolean(AppPreferences.KEY_RUNNING, false)
+        AppPreferences.get(this).edit()
+                .putBoolean(AppPreferences.KEY_RUNNING, false)
+                .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
                 .putString(AppPreferences.KEY_CONNECTION, "standby").apply();
         if (locationManager != null) locationManager.removeUpdates(this);
         if (worker != null) worker.removeCallbacksAndMessages(null);
         if (workerThread != null) workerThread.quitSafely();
+        NotificationManager notificationManager = getSystemService(NotificationManager.class);
+        for (Integer notificationId : aircraftNotificationIds) {
+            notificationManager.cancel(notificationId);
+        }
+        aircraftNotificationIds.clear();
+        notificationManager.cancel(STATUS_NOTIFICATION_ID);
+        stopForeground(STOP_FOREGROUND_REMOVE);
         super.onDestroy();
     }
 
@@ -145,8 +178,7 @@ public class MonitorService extends Service implements LocationListener {
                 .getInt(AppPreferences.KEY_RADIUS_KM, AppPreferences.DEFAULT_RADIUS_KM);
         if (own == null) {
             publishTelemetry("no_location", 0, new JSONArray(), "", Double.NaN, Double.NaN);
-            updateStatus("NO LOCATION", AppPreferences.isGerman(this)
-                    ? "Standortsignal nicht verfügbar" : "Location signal unavailable", 0);
+            updateStatus("NO LOCATION", "", 0);
             return;
         }
 
@@ -165,8 +197,7 @@ public class MonitorService extends Service implements LocationListener {
 
             int code = connection.getResponseCode();
             if (code != 200) {
-                updateStatus("NETWORK " + code, AppPreferences.isGerman(this)
-                        ? "Live-Daten momentan nicht erreichbar" : "Live data currently unavailable", 0);
+                updateStatus("NETWORK " + code, "", 0);
                 return;
             }
 
@@ -213,18 +244,10 @@ public class MonitorService extends Service implements LocationListener {
             aircraftAlreadyInside.addAll(currentlyInside);
             publishTelemetry("connected", militaryCount, liveAircraft, nearestCallsign,
                     nearestDistanceKm, nearestAltitudeFt);
-            boolean german = AppPreferences.isGerman(this);
-            String radiusText = AppPreferences.distance(this, radiusKm);
-            String detail = german
-                    ? militaryCount + (militaryCount == 1 ? " Militärmaschine innerhalb "
-                    : " Militärmaschinen innerhalb ") + radiusText
-                    : militaryCount + (militaryCount == 1 ? " military aircraft within "
-                    : " military aircraft within ") + radiusText;
-            updateStatus("LIVE // " + nowTime(), detail, militaryCount);
+            updateStatus("LIVE // " + nowTime(), "", militaryCount);
         } catch (Exception e) {
             AppPreferences.get(this).edit().putString(AppPreferences.KEY_CONNECTION, "error").apply();
-            updateStatus("SIGNAL LOST", AppPreferences.isGerman(this)
-                    ? "Nächster Verbindungsversuch" : "Retrying connection", 0);
+            updateStatus("SIGNAL LOST", "", 0);
         } finally {
             if (connection != null) connection.disconnect();
         }
@@ -233,16 +256,19 @@ public class MonitorService extends Service implements LocationListener {
     private void createChannels() {
         NotificationManager nm = getSystemService(NotificationManager.class);
         NotificationChannel status = new NotificationChannel(CHANNEL_STATUS,
-                "Live-Radarstatus", NotificationManager.IMPORTANCE_LOW);
-        status.setDescription("Permanente Live-Anzeige des militärischen Radars");
+                L10n.t(this, "background_service"),
+                NotificationManager.IMPORTANCE_MIN);
+        status.setDescription(L10n.t(this, "background_description"));
         status.setShowBadge(false);
-        status.setLightColor(Color.CYAN);
+        status.enableLights(false);
+        status.enableVibration(false);
+        status.setSound(null, null);
 
         NotificationChannel alerts = new NotificationChannel(CHANNEL_ALERTS,
-                "Militärflugzeug erkannt", NotificationManager.IMPORTANCE_HIGH);
-        alerts.setDescription("Live-Warnungen für neue Militärflugzeuge im Radius");
+                L10n.t(this, "alert_channel"), NotificationManager.IMPORTANCE_HIGH);
+        alerts.setDescription(L10n.t(this, "alert_description"));
         alerts.enableLights(true);
-        alerts.setLightColor(Color.rgb(0, 245, 255));
+        alerts.setLightColor(Color.rgb(217, 130, 69));
         alerts.enableVibration(AppPreferences.get(this)
                 .getBoolean(AppPreferences.KEY_VIBRATION, true));
         nm.createNotificationChannel(status);
@@ -250,7 +276,6 @@ public class MonitorService extends Service implements LocationListener {
     }
 
     private Notification statusNotification(String state, String detail, int count) {
-        boolean de = AppPreferences.isGerman(this);
         PendingIntent open = PendingIntent.getActivity(this, 0,
                 new Intent(this, MainActivity.class),
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
@@ -258,25 +283,19 @@ public class MonitorService extends Service implements LocationListener {
         PendingIntent stop = PendingIntent.getService(this, 1, stopIntent,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        String bigText = detail + "\n" + (de ? "Aktualisierung alle " : "Refresh every ")
-                + AppPreferences.refreshSeconds(this) + (de ? " Sekunden • ADS-B Live" : " seconds • ADS-B Live");
         return new Notification.Builder(this, CHANNEL_STATUS)
                 .setSmallIcon(R.drawable.ic_notification_radar)
-                .setLargeIcon(radarBitmap(count > 0))
-                .setContentTitle("MAR // " + state)
-                .setContentText(detail)
-                .setSubText("MILITARY AIRCRAFT RADAR")
-                .setStyle(new Notification.BigTextStyle().bigText(bigText)
-                        .setBigContentTitle("MAR // " + state)
-                        .setSummaryText("MILITARY AIRCRAFT RADAR"))
-                .setColor(Color.rgb(0, 245, 255))
-                .setColorized(true)
+                .setContentTitle(L10n.t(this, "live_radar"))
+                .setContentText(L10n.t(this, "monitoring_running"))
+                .setColor(Color.rgb(96, 105, 110))
+                .setColorized(false)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
+                .setShowWhen(false)
                 .setCategory(Notification.CATEGORY_SERVICE)
                 .setContentIntent(open)
                 .addAction(android.R.drawable.ic_media_pause,
-                        de ? "RADAR STOPPEN" : "STOP RADAR", stop)
+                        L10n.t(this, "stop_radar"), stop)
                 .build();
     }
 
@@ -296,11 +315,12 @@ public class MonitorService extends Service implements LocationListener {
                                           double aircraftLon) {
         String details = AppPreferences.distance(this, distanceKm) + "  •  "
                 + AppPreferences.altitude(this, altitudeFt);
-        PendingIntent openApp = PendingIntent.getActivity(this, hex.hashCode(),
-                new Intent(this, MainActivity.class),
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        Intent trackerIntent = new Intent(Intent.ACTION_VIEW,
-                TrackerLinks.selected(this, hex, aircraftLat, aircraftLon));
+        Intent trackerIntent = new Intent(this, TrackerDispatchActivity.class)
+                .setData(android.net.Uri.parse("mar://aircraft/" + android.net.Uri.encode(hex)))
+                .putExtra("callsign", callsign)
+                .putExtra("hex", hex)
+                .putExtra("lat", aircraftLat)
+                .putExtra("lon", aircraftLon);
         PendingIntent tracker = PendingIntent.getActivity(this, hex.hashCode() ^ 0x5f3759df,
                 trackerIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Intent dismissedIntent = new Intent(this, MonitorService.class)
@@ -313,27 +333,21 @@ public class MonitorService extends Service implements LocationListener {
                 .putExtra("lon", aircraftLon);
         PendingIntent dismissed = PendingIntent.getService(this, hex.hashCode() ^ 0x4d4152,
                 dismissedIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        boolean de = AppPreferences.isGerman(this);
-        Notification notification = new Notification.Builder(this, CHANNEL_ALERTS)
+        Notification.Builder builder = new Notification.Builder(this, CHANNEL_ALERTS)
                 .setSmallIcon(R.drawable.ic_notification_radar)
                 .setLargeIcon(radarBitmap(true))
                 .setContentTitle(callsign)
                 .setContentText(details)
-                .setSubText("MAR // LIVE")
-                .setStyle(new Notification.BigTextStyle().bigText(details)
-                        .setBigContentTitle(callsign)
-                        .setSummaryText("MAR // LIVE"))
-                .setColor(Color.rgb(176, 38, 255))
+                .setSubText(L10n.t(this, "found_via"))
+                .setColor(Color.rgb(217, 130, 69))
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setContentIntent(tracker)
                 .setDeleteIntent(dismissed)
-                .addAction(android.R.drawable.ic_menu_view,
-                        (de ? "IN " : "OPEN IN ") + TrackerLinks.selectedName(this).toUpperCase(Locale.ROOT), tracker)
-                .addAction(android.R.drawable.ic_menu_compass,
-                        de ? "MAR ÖFFNEN" : "OPEN MAR", openApp)
-                .setAutoCancel(false)
-                .build();
-        getSystemService(NotificationManager.class).notify(hex.hashCode(), notification);
+                .setAutoCancel(false);
+        Notification notification = builder.build();
+        int notificationId = hex.hashCode();
+        aircraftNotificationIds.add(notificationId);
+        getSystemService(NotificationManager.class).notify(notificationId, notification);
     }
 
     private double altitudeFeet(Object value) {
@@ -388,7 +402,7 @@ public class MonitorService extends Service implements LocationListener {
         canvas.drawCircle(64, 64, 62, paint);
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(4);
-        paint.setColor(alert ? Color.rgb(176, 38, 255) : Color.rgb(0, 245, 255));
+        paint.setColor(alert ? Color.rgb(217, 130, 69) : Color.rgb(79, 138, 101));
         canvas.drawCircle(64, 64, 50, paint);
         canvas.drawCircle(64, 64, 30, paint);
         canvas.drawLine(64, 14, 64, 114, paint);
