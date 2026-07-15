@@ -1,0 +1,54 @@
+name: Bug report
+description: Report a reproducible problem in MAR
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Do not include precise locations, credentials, or other personal data.
+  - type: input
+    id: version
+    attributes:
+      label: MAR version
+      placeholder: 4.1 beta
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Android
+        - iPhone or iPad
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Operating system version and device
+      placeholder: Android 15 on Pixel 8, or iOS 18 on iPhone 15
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs or screenshots
+      description: Remove exact coordinates, identifiers, and personal data first.

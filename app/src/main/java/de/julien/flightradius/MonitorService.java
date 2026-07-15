@@ -19,6 +19,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -29,25 +32,40 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class MonitorService extends Service implements LocationListener {
-    private static final String CHANNEL_STATUS = "monitor_status_v3";
+    private static final String CHANNEL_STATUS = "monitor_status_v4";
     private static final String CHANNEL_ALERTS = "military_alerts_v3";
     private static final String ACTION_STOP = "de.julien.flightradius.STOP";
-    private static final String ACTION_RESEND_DISMISSED = "de.julien.flightradius.RESEND_DISMISSED";
+    private static final String ACTION_NOTIFICATION_DISMISSED =
+            "de.julien.flightradius.NOTIFICATION_DISMISSED";
+    static final String ACTION_RADIUS_CHANGED = "de.julien.flightradius.RADIUS_CHANGED";
     private static final long DISMISSED_RESEND_DELAY_MS = 5 * 60 * 1000L;
     private static final int STATUS_NOTIFICATION_ID = 1001;
     private static final int MILITARY_FLAG = 1;
 
-    private final Set<String> aircraftAlreadyInside = new HashSet<>();
+    private final Map<String, JSONObject> lastKnownAlerts = new HashMap<>();
+    private final Map<String, JSONObject> sessionHistory = new LinkedHashMap<>();
+    private final Map<String, Long> notificationSuppressedUntil = new ConcurrentHashMap<>();
+    private final Set<Integer> aircraftNotificationIds = Collections.newSetFromMap(
+            new ConcurrentHashMap<Integer, Boolean>());
     private HandlerThread workerThread;
     private Handler worker;
     private LocationManager locationManager;
     private volatile Location latestLocation;
     private static volatile boolean running;
+    private boolean pollingScheduled;
 
     static boolean isRunning() { return running; }
 
@@ -65,57 +83,91 @@ public class MonitorService extends Service implements LocationListener {
     public void onCreate() {
         super.onCreate();
         createChannels();
-        boolean de = AppPreferences.isGerman(this);
         startForeground(STATUS_NOTIFICATION_ID,
                 statusNotification("INITIALIZING",
-                        de ? "Warte auf Standortsignal …" : "Waiting for location signal …", 0));
+                        L10n.t(this, "waiting_location"), 0));
 
         workerThread = new HandlerThread("military-live-monitor");
         workerThread.start();
         worker = new Handler(workerThread.getLooper());
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        loadSessionHistory();
         if (hasLocationPermission()) {
             registerProvider(LocationManager.GPS_PROVIDER);
             registerProvider(LocationManager.NETWORK_PROVIDER);
         }
         running = true;
-        AppPreferences.get(this).edit().putBoolean(AppPreferences.KEY_RUNNING, true).apply();
-        worker.post(pollTask);
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            AppPreferences.get(this).edit()
+                    .putBoolean(AppPreferences.KEY_RUNNING, false)
+                    .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
+                    .apply();
             stopSelf();
             return START_NOT_STICKY;
         }
-        if (intent != null && ACTION_RESEND_DISMISSED.equals(intent.getAction())) {
-            String callsign = intent.getStringExtra("callsign");
+        if (!AppPreferences.get(this).getBoolean(AppPreferences.KEY_RUNNING, false)) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+        if (intent != null && ACTION_NOTIFICATION_DISMISSED.equals(intent.getAction())) {
             String hex = intent.getStringExtra("hex");
-            double distanceKm = intent.getDoubleExtra("distance_km", Double.NaN);
-            double altitudeFt = intent.getDoubleExtra("altitude_ft", Double.NaN);
-            double lat = intent.getDoubleExtra("lat", Double.NaN);
-            double lon = intent.getDoubleExtra("lon", Double.NaN);
-            if (worker != null && callsign != null && !callsign.isEmpty()
-                    && hex != null && !hex.isEmpty()) {
-                worker.postDelayed(() -> showAircraftNotification(
-                        callsign, hex, distanceKm, altitudeFt, lat, lon),
-                        DISMISSED_RESEND_DELAY_MS);
+            if (hex != null && !hex.isEmpty()) {
+                notificationSuppressedUntil.put(hex,
+                        System.currentTimeMillis() + DISMISSED_RESEND_DELAY_MS);
+                aircraftNotificationIds.remove(hex.hashCode());
+                getSystemService(NotificationManager.class).cancel(hex.hashCode());
             }
         }
-        return START_STICKY;
+        if (intent != null && ACTION_RADIUS_CHANGED.equals(intent.getAction())
+                && pollingScheduled && worker != null) {
+            worker.post(() -> {
+                worker.removeCallbacks(pollTask);
+                worker.post(pollTask);
+            });
+        } else if (!pollingScheduled && worker != null) {
+            pollingScheduled = true;
+            worker.post(pollTask);
+        }
+        return START_NOT_STICKY;
     }
 
     @Override public IBinder onBind(Intent intent) { return null; }
 
     @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        AppPreferences.get(this).edit()
+                .putBoolean(AppPreferences.KEY_RUNNING, false)
+                .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
+                .putString(AppPreferences.KEY_CONNECTION, "standby")
+                .putString(AppPreferences.KEY_AIRCRAFT_HISTORY_JSON, "[]")
+                .apply();
+        getSystemService(NotificationManager.class).cancelAll();
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        stopSelf();
+        super.onTaskRemoved(rootIntent);
+    }
+
+    @Override
     public void onDestroy() {
         running = false;
-        AppPreferences.get(this).edit().putBoolean(AppPreferences.KEY_RUNNING, false)
+        AppPreferences.get(this).edit()
+                .putBoolean(AppPreferences.KEY_RUNNING, false)
+                .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
                 .putString(AppPreferences.KEY_CONNECTION, "standby").apply();
         if (locationManager != null) locationManager.removeUpdates(this);
         if (worker != null) worker.removeCallbacksAndMessages(null);
         if (workerThread != null) workerThread.quitSafely();
+        NotificationManager notificationManager = getSystemService(NotificationManager.class);
+        for (Integer notificationId : aircraftNotificationIds) {
+            notificationManager.cancel(notificationId);
+        }
+        aircraftNotificationIds.clear();
+        notificationManager.cancel(STATUS_NOTIFICATION_ID);
+        stopForeground(STOP_FOREGROUND_REMOVE);
         super.onDestroy();
     }
 
@@ -145,41 +197,27 @@ public class MonitorService extends Service implements LocationListener {
                 .getInt(AppPreferences.KEY_RADIUS_KM, AppPreferences.DEFAULT_RADIUS_KM);
         if (own == null) {
             publishTelemetry("no_location", 0, new JSONArray(), "", Double.NaN, Double.NaN);
-            updateStatus("NO LOCATION", AppPreferences.isGerman(this)
-                    ? "Standortsignal nicht verfügbar" : "Location signal unavailable", 0);
+            updateStatus("NO LOCATION", "", 0);
             return;
         }
 
         int radiusNm = Math.max(1, Math.min(250, (int) Math.ceil(radiusKm / 1.852)));
-        String endpoint = String.format(Locale.US,
+        String localEndpoint = String.format(Locale.US,
                 "https://api.adsb.lol/v2/lat/%.5f/lon/%.5f/dist/%d",
                 own.getLatitude(), own.getLongitude(), radiusNm);
 
-        HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(endpoint).openConnection();
-            connection.setConnectTimeout(10_000);
-            connection.setReadTimeout(15_000);
-            connection.setRequestProperty("User-Agent", "FlightRadiusMonitor/2.0");
-            connection.setRequestProperty("Accept", "application/json");
-
-            int code = connection.getResponseCode();
-            if (code != 200) {
-                updateStatus("NETWORK " + code, AppPreferences.isGerman(this)
-                        ? "Live-Daten momentan nicht erreichbar" : "Live data currently unavailable", 0);
-                return;
+            JSONArray aircraft;
+            boolean militaryEndpoint = true;
+            try {
+                aircraft = fetchAircraft("https://api.adsb.lol/v2/mil");
+            } catch (Exception militaryFailure) {
+                militaryEndpoint = false;
+                aircraft = fetchAircraft(localEndpoint);
             }
-
-            StringBuilder json = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(connection.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) json.append(line);
-            }
-
-            JSONArray aircraft = new JSONObject(json.toString()).optJSONArray("ac");
             JSONArray liveAircraft = new JSONArray();
             Set<String> currentlyInside = new HashSet<>();
+            long scanTime = System.currentTimeMillis();
             int militaryCount = 0;
             String nearestCallsign = "";
             double nearestDistanceKm = Double.NaN;
@@ -187,9 +225,15 @@ public class MonitorService extends Service implements LocationListener {
             if (aircraft != null) {
                 for (int i = 0; i < aircraft.length(); i++) {
                     JSONObject plane = aircraft.optJSONObject(i);
-                    if (plane == null || (plane.optInt("dbFlags", 0) & MILITARY_FLAG) == 0) continue;
-                    double distanceNm = plane.optDouble("dst", Double.NaN);
-                    double distanceKm = distanceNm * 1.852;
+                    if (plane == null || (!militaryEndpoint
+                            && (plane.optInt("dbFlags", 0) & MILITARY_FLAG) == 0)) continue;
+                    double aircraftLat = plane.optDouble("lat", Double.NaN);
+                    double aircraftLon = plane.optDouble("lon", Double.NaN);
+                    if (Double.isNaN(aircraftLat) || Double.isNaN(aircraftLon)) continue;
+                    float[] distanceMeters = new float[1];
+                    Location.distanceBetween(own.getLatitude(), own.getLongitude(),
+                            aircraftLat, aircraftLon, distanceMeters);
+                    double distanceKm = distanceMeters[0] / 1000d;
                     if (Double.isNaN(distanceKm) || distanceKm > radiusKm) continue;
 
                     String hex = plane.optString("hex", "unknown").replace("~", "");
@@ -197,34 +241,57 @@ public class MonitorService extends Service implements LocationListener {
                     double altitudeFt = altitudeFeet(plane.opt("alt_baro"));
                     militaryCount++;
                     currentlyInside.add(hex);
-                    liveAircraft.put(compactAircraft(plane, hex, callsign, distanceKm, altitudeFt));
+                    JSONObject compact = compactAircraft(plane, hex, callsign,
+                            distanceKm, altitudeFt);
+                    liveAircraft.put(compact);
+                    updateSessionRecord(compact, scanTime);
                     if (!callsign.isEmpty() && (Double.isNaN(nearestDistanceKm)
                             || distanceKm < nearestDistanceKm)) {
                         nearestCallsign = callsign;
                         nearestDistanceKm = distanceKm;
                         nearestAltitudeFt = altitudeFt;
                     }
-                    if (!callsign.isEmpty() && !aircraftAlreadyInside.contains(hex))
-                        notifyAircraft(plane, callsign, distanceKm, altitudeFt);
+                    if (!compact.optString("callsign", "").isEmpty()) {
+                        lastKnownAlerts.put(hex, compact);
+                        showAircraftNotification(compact, true);
+                    }
                 }
             }
 
-            aircraftAlreadyInside.clear();
-            aircraftAlreadyInside.addAll(currentlyInside);
+            markMissingAircraftOutOfRange(currentlyInside);
+            for (Map.Entry<String, JSONObject> entry : lastKnownAlerts.entrySet()) {
+                if (!currentlyInside.contains(entry.getKey())) {
+                    showAircraftNotification(entry.getValue(), false);
+                }
+            }
+            publishSessionHistory();
             publishTelemetry("connected", militaryCount, liveAircraft, nearestCallsign,
                     nearestDistanceKm, nearestAltitudeFt);
-            boolean german = AppPreferences.isGerman(this);
-            String radiusText = AppPreferences.distance(this, radiusKm);
-            String detail = german
-                    ? militaryCount + (militaryCount == 1 ? " Militärmaschine innerhalb "
-                    : " Militärmaschinen innerhalb ") + radiusText
-                    : militaryCount + (militaryCount == 1 ? " military aircraft within "
-                    : " military aircraft within ") + radiusText;
-            updateStatus("LIVE // " + nowTime(), detail, militaryCount);
+            updateStatus("LIVE // " + nowTime(), "", militaryCount);
         } catch (Exception e) {
             AppPreferences.get(this).edit().putString(AppPreferences.KEY_CONNECTION, "error").apply();
-            updateStatus("SIGNAL LOST", AppPreferences.isGerman(this)
-                    ? "Nächster Verbindungsversuch" : "Retrying connection", 0);
+            updateStatus("SIGNAL LOST", "", 0);
+        }
+    }
+
+    private JSONArray fetchAircraft(String endpoint) throws Exception {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(endpoint).openConnection();
+            connection.setConnectTimeout(10_000);
+            connection.setReadTimeout(15_000);
+            connection.setRequestProperty("User-Agent", "MilitaryAircraftRadar/4.1");
+            connection.setRequestProperty("Accept", "application/json");
+            int code = connection.getResponseCode();
+            if (code != 200) throw new IllegalStateException("ADSB.lol HTTP " + code);
+            StringBuilder json = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(connection.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) json.append(line);
+            }
+            JSONArray aircraft = new JSONObject(json.toString()).optJSONArray("ac");
+            return aircraft == null ? new JSONArray() : aircraft;
         } finally {
             if (connection != null) connection.disconnect();
         }
@@ -233,16 +300,19 @@ public class MonitorService extends Service implements LocationListener {
     private void createChannels() {
         NotificationManager nm = getSystemService(NotificationManager.class);
         NotificationChannel status = new NotificationChannel(CHANNEL_STATUS,
-                "Live-Radarstatus", NotificationManager.IMPORTANCE_LOW);
-        status.setDescription("Permanente Live-Anzeige des militärischen Radars");
+                L10n.t(this, "background_service"),
+                NotificationManager.IMPORTANCE_MIN);
+        status.setDescription(L10n.t(this, "background_description"));
         status.setShowBadge(false);
-        status.setLightColor(Color.CYAN);
+        status.enableLights(false);
+        status.enableVibration(false);
+        status.setSound(null, null);
 
         NotificationChannel alerts = new NotificationChannel(CHANNEL_ALERTS,
-                "Militärflugzeug erkannt", NotificationManager.IMPORTANCE_HIGH);
-        alerts.setDescription("Live-Warnungen für neue Militärflugzeuge im Radius");
+                L10n.t(this, "alert_channel"), NotificationManager.IMPORTANCE_HIGH);
+        alerts.setDescription(L10n.t(this, "alert_description"));
         alerts.enableLights(true);
-        alerts.setLightColor(Color.rgb(0, 245, 255));
+        alerts.setLightColor(MARColors.ORANGE);
         alerts.enableVibration(AppPreferences.get(this)
                 .getBoolean(AppPreferences.KEY_VIBRATION, true));
         nm.createNotificationChannel(status);
@@ -250,7 +320,6 @@ public class MonitorService extends Service implements LocationListener {
     }
 
     private Notification statusNotification(String state, String detail, int count) {
-        boolean de = AppPreferences.isGerman(this);
         PendingIntent open = PendingIntent.getActivity(this, 0,
                 new Intent(this, MainActivity.class),
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
@@ -258,25 +327,19 @@ public class MonitorService extends Service implements LocationListener {
         PendingIntent stop = PendingIntent.getService(this, 1, stopIntent,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        String bigText = detail + "\n" + (de ? "Aktualisierung alle " : "Refresh every ")
-                + AppPreferences.refreshSeconds(this) + (de ? " Sekunden • ADS-B Live" : " seconds • ADS-B Live");
         return new Notification.Builder(this, CHANNEL_STATUS)
                 .setSmallIcon(R.drawable.ic_notification_radar)
-                .setLargeIcon(radarBitmap(count > 0))
-                .setContentTitle("MAR // " + state)
-                .setContentText(detail)
-                .setSubText("MILITARY AIRCRAFT RADAR")
-                .setStyle(new Notification.BigTextStyle().bigText(bigText)
-                        .setBigContentTitle("MAR // " + state)
-                        .setSummaryText("MILITARY AIRCRAFT RADAR"))
-                .setColor(Color.rgb(0, 245, 255))
-                .setColorized(true)
+                .setContentTitle(L10n.t(this, "live_radar"))
+                .setContentText(L10n.t(this, "monitoring_running"))
+                .setColor(MARColors.DARK_MUTED)
+                .setColorized(false)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
+                .setShowWhen(false)
                 .setCategory(Notification.CATEGORY_SERVICE)
                 .setContentIntent(open)
                 .addAction(android.R.drawable.ic_media_pause,
-                        de ? "RADAR STOPPEN" : "STOP RADAR", stop)
+                        L10n.t(this, "stop_radar"), stop)
                 .build();
     }
 
@@ -285,55 +348,67 @@ public class MonitorService extends Service implements LocationListener {
                 statusNotification(state, detail, count));
     }
 
-    private void notifyAircraft(JSONObject plane, String callsign, double distanceKm, double altitudeFt) {
-        String hex = plane.optString("hex", "unknown").replace("~", "");
-        showAircraftNotification(callsign, hex, distanceKm, altitudeFt,
-                plane.optDouble("lat", Double.NaN), plane.optDouble("lon", Double.NaN));
-    }
+    private void showAircraftNotification(JSONObject aircraft, boolean inRange) {
+        if (!running || !AppPreferences.get(this)
+                .getBoolean(AppPreferences.KEY_RUNNING, false)) return;
+        String callsign = aircraft.optString("callsign", "");
+        String hex = aircraft.optString("hex", "");
+        if (callsign.isEmpty() || hex.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        Long suppressedUntil = notificationSuppressedUntil.get(hex);
+        if (suppressedUntil != null) {
+            if (!inRange || suppressedUntil > now) return;
+            notificationSuppressedUntil.remove(hex);
+        }
 
-    private void showAircraftNotification(String callsign, String hex, double distanceKm,
-                                          double altitudeFt, double aircraftLat,
-                                          double aircraftLon) {
-        String details = AppPreferences.distance(this, distanceKm) + "  •  "
-                + AppPreferences.altitude(this, altitudeFt);
-        PendingIntent openApp = PendingIntent.getActivity(this, hex.hashCode(),
-                new Intent(this, MainActivity.class),
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        Intent trackerIntent = new Intent(Intent.ACTION_VIEW,
-                TrackerLinks.selected(this, hex, aircraftLat, aircraftLon));
+        double distanceKm = aircraft.optDouble("distance_km", Double.NaN);
+        double altitudeFt = aircraft.isNull("altitude_ft")
+                ? Double.NaN : aircraft.optDouble("altitude_ft", Double.NaN);
+        double aircraftLat = aircraft.optDouble("lat", Double.NaN);
+        double aircraftLon = aircraft.optDouble("lon", Double.NaN);
+        CharSequence details;
+        if (inRange) {
+            details = AppPreferences.distance(this, distanceKm) + "  •  "
+                    + AppPreferences.altitude(this, altitudeFt);
+        } else {
+            String state = L10n.t(this, "out_of_range");
+            SpannableString redState = new SpannableString(state + "  •  "
+                    + AppPreferences.altitude(this, altitudeFt));
+            redState.setSpan(new ForegroundColorSpan(MARColors.RED),
+                    0, state.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            details = redState;
+        }
+        Intent trackerIntent = new Intent(this, TrackerDispatchActivity.class)
+                .setData(android.net.Uri.parse("mar://aircraft/" + android.net.Uri.encode(hex)))
+                .putExtra("callsign", callsign)
+                .putExtra("hex", hex)
+                .putExtra("lat", aircraftLat)
+                .putExtra("lon", aircraftLon);
         PendingIntent tracker = PendingIntent.getActivity(this, hex.hashCode() ^ 0x5f3759df,
                 trackerIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Intent dismissedIntent = new Intent(this, MonitorService.class)
-                .setAction(ACTION_RESEND_DISMISSED)
-                .putExtra("callsign", callsign)
-                .putExtra("hex", hex)
-                .putExtra("distance_km", distanceKm)
-                .putExtra("altitude_ft", altitudeFt)
-                .putExtra("lat", aircraftLat)
-                .putExtra("lon", aircraftLon);
+                .setAction(ACTION_NOTIFICATION_DISMISSED)
+                .setData(android.net.Uri.parse("mar://dismiss/" + android.net.Uri.encode(hex)))
+                .putExtra("hex", hex);
         PendingIntent dismissed = PendingIntent.getService(this, hex.hashCode() ^ 0x4d4152,
                 dismissedIntent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        boolean de = AppPreferences.isGerman(this);
-        Notification notification = new Notification.Builder(this, CHANNEL_ALERTS)
+        Notification.Builder builder = new Notification.Builder(this, CHANNEL_ALERTS)
                 .setSmallIcon(R.drawable.ic_notification_radar)
                 .setLargeIcon(radarBitmap(true))
                 .setContentTitle(callsign)
                 .setContentText(details)
-                .setSubText("MAR // LIVE")
-                .setStyle(new Notification.BigTextStyle().bigText(details)
-                        .setBigContentTitle(callsign)
-                        .setSummaryText("MAR // LIVE"))
-                .setColor(Color.rgb(176, 38, 255))
+                .setStyle(new Notification.BigTextStyle().bigText(details))
+                .setSubText(callsign)
+                .setColor(inRange ? MARColors.ORANGE : MARColors.RED)
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setContentIntent(tracker)
                 .setDeleteIntent(dismissed)
-                .addAction(android.R.drawable.ic_menu_view,
-                        (de ? "IN " : "OPEN IN ") + TrackerLinks.selectedName(this).toUpperCase(Locale.ROOT), tracker)
-                .addAction(android.R.drawable.ic_menu_compass,
-                        de ? "MAR ÖFFNEN" : "OPEN MAR", openApp)
                 .setAutoCancel(false)
-                .build();
-        getSystemService(NotificationManager.class).notify(hex.hashCode(), notification);
+                .setOnlyAlertOnce(true);
+        Notification notification = builder.build();
+        int notificationId = hex.hashCode();
+        aircraftNotificationIds.add(notificationId);
+        getSystemService(NotificationManager.class).notify(notificationId, notification);
     }
 
     private double altitudeFeet(Object value) {
@@ -363,6 +438,75 @@ public class MonitorService extends Service implements LocationListener {
         return item;
     }
 
+    private void loadSessionHistory() {
+        String saved = AppPreferences.get(this).getString(
+                AppPreferences.KEY_AIRCRAFT_HISTORY_JSON, "[]");
+        try {
+            JSONArray array = new JSONArray(saved);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject item = array.optJSONObject(i);
+                if (item == null) continue;
+                String hex = item.optString("hex", "");
+                if (!hex.isEmpty()) sessionHistory.put(hex, item);
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private void updateSessionRecord(JSONObject current, long scanTime) {
+        String hex = current.optString("hex", "");
+        if (hex.isEmpty()) return;
+        JSONObject previous = sessionHistory.get(hex);
+        long firstSeen = previous == null ? scanTime
+                : previous.optLong("first_seen_ms", scanTime);
+        try {
+            if (previous != null) {
+                preserveText(current, previous, "callsign");
+                preserveText(current, previous, "registration");
+                preserveText(current, previous, "type");
+            }
+            current.put("first_seen_ms", firstSeen);
+            current.put("last_seen_ms", scanTime);
+            current.put("in_range", true);
+            current.remove("out_of_range_since_ms");
+            sessionHistory.put(hex, current);
+        } catch (Exception ignored) { }
+    }
+
+    private void preserveText(JSONObject current, JSONObject previous, String key)
+            throws Exception {
+        if (current.optString(key, "").isEmpty()) {
+            current.put(key, previous.optString(key, ""));
+        }
+    }
+
+    private void markMissingAircraftOutOfRange(Set<String> currentlyInside) {
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, JSONObject> entry : sessionHistory.entrySet()) {
+            if (currentlyInside.contains(entry.getKey())) continue;
+            JSONObject item = entry.getValue();
+            if (!item.optBoolean("in_range", false)) continue;
+            try {
+                item.put("in_range", false);
+                item.put("out_of_range_since_ms", now);
+            } catch (Exception ignored) { }
+        }
+    }
+
+    private void publishSessionHistory() {
+        List<JSONObject> records = new ArrayList<>(sessionHistory.values());
+        Collections.sort(records, new Comparator<JSONObject>() {
+            @Override public int compare(JSONObject left, JSONObject right) {
+                return Long.compare(right.optLong("last_seen_ms", 0L),
+                        left.optLong("last_seen_ms", 0L));
+            }
+        });
+        JSONArray array = new JSONArray();
+        for (JSONObject record : records) array.put(record);
+        AppPreferences.get(this).edit()
+                .putString(AppPreferences.KEY_AIRCRAFT_HISTORY_JSON, array.toString())
+                .apply();
+    }
+
     private void publishTelemetry(String connection, int count, JSONArray aircraft,
                                   String nearestCallsign, double nearestDistanceKm,
                                   double nearestAltitudeFt) {
@@ -384,11 +528,11 @@ public class MonitorService extends Service implements LocationListener {
         Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(Color.BLACK);
+        paint.setColor(MARColors.INK);
         canvas.drawCircle(64, 64, 62, paint);
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(4);
-        paint.setColor(alert ? Color.rgb(176, 38, 255) : Color.rgb(0, 245, 255));
+        paint.setColor(alert ? MARColors.ORANGE : MARColors.GREEN);
         canvas.drawCircle(64, 64, 50, paint);
         canvas.drawCircle(64, 64, 30, paint);
         canvas.drawLine(64, 14, 64, 114, paint);

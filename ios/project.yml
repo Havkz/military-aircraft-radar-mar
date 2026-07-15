@@ -1,0 +1,30 @@
+name: MAR
+options:
+  bundleIdPrefix: de.julien.flightradius
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+targets:
+  MAR:
+    type: application
+    platform: iOS
+    sources:
+      - MAR
+    resources:
+      - MAR/Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.julien.flightradius.ios
+        PRODUCT_NAME: MAR
+        MARKETING_VERSION: "4.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Military Aircraft Radar
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: MAR uses your location to find military aircraft inside the selected radius.
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+    scheme:
+      testTargets: []

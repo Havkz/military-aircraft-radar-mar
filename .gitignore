@@ -10,6 +10,7 @@ local.properties
 *.iml
 
 # Packaged applications and signing material
+dist/
 *.apk
 *.aab
 *.apks
@@ -18,6 +19,18 @@ local.properties
 *.keystore
 *.pem
 *.key
+*.p12
+*.pfx
+*.der
+*.p12
+*.mobileprovision
+*.xcarchive
+*.ipa
+google-services.json
+service-account*.json
+.env
+.env.*
+!.env.example
 
 # Native and diagnostic output
 .cxx/
@@ -27,3 +40,8 @@ captures/
 # Operating-system metadata
 .DS_Store
 Thumbs.db
+
+# Generated Apple project and user state
+ios/*.xcodeproj/
+**/xcuserdata/
+DerivedData/
