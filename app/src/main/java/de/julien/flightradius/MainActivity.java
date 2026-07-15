@@ -112,7 +112,7 @@ public class MainActivity extends Activity {
         LinearLayout names = new LinearLayout(this);
         names.setOrientation(LinearLayout.VERTICAL);
         top.addView(names, new LinearLayout.LayoutParams(0, -2, 1f));
-        TextView eyebrow = label(L10n.t(this, "live_radar"), 11, muted, Typeface.BOLD);
+        TextView eyebrow = label(L10n.t(this, "live_radar"), 11, BLUE, Typeface.BOLD);
         eyebrow.setLetterSpacing(0.16f);
         names.addView(eyebrow);
         TextView title = label(L10n.t(this, "app_title"), 28, text, Typeface.BOLD);
@@ -161,7 +161,7 @@ public class MainActivity extends Activity {
                 11, muted, Typeface.BOLD);
         nearestTitle.setLetterSpacing(0.1f);
         nearestCard.addView(nearestTitle);
-        nearestValue = label("—", 18, text, Typeface.BOLD);
+        nearestValue = label("—", 18, ORANGE, Typeface.BOLD);
         nearestValue.setPadding(0, dp(8), 0, 0);
         nearestCard.addView(nearestValue);
         root.addView(nearestCard, cardParams());
@@ -171,7 +171,7 @@ public class MainActivity extends Activity {
         TextView rangeTitle = label(L10n.t(this, "scan_radius"), 11, muted, Typeface.BOLD);
         rangeTitle.setLetterSpacing(0.12f);
         rangeCard.addView(rangeTitle);
-        radiusValue = label("", 27, text, Typeface.BOLD);
+        radiusValue = label("", 27, BLUE, Typeface.BOLD);
         radiusValue.setPadding(0, dp(6), 0, 0);
         rangeCard.addView(radiusValue);
         RecommendedRangeControl rangeControl = new RecommendedRangeControl(this);
@@ -218,7 +218,7 @@ public class MainActivity extends Activity {
         TextView heading = label(title, 10, muted, Typeface.BOLD);
         heading.setLetterSpacing(0.1f);
         box.addView(heading);
-        TextView value = label("—", 22, text, Typeface.BOLD);
+        TextView value = label("—", 22, BLUE, Typeface.BOLD);
         value.setPadding(0, dp(6), 0, 0);
         box.addView(value);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(100), 1f);
@@ -323,7 +323,7 @@ public class MainActivity extends Activity {
             ImageButton button = navigationButtons[i];
             if (button == null) continue;
             boolean selected = i == currentPage;
-            button.setImageTintList(ColorStateList.valueOf(selected ? text : muted));
+            button.setImageTintList(ColorStateList.valueOf(selected ? GREEN : muted));
             GradientDrawable backgroundDrawable = new GradientDrawable();
             backgroundDrawable.setColor(selected
                     ? (AppPreferences.isDark(this)
@@ -424,7 +424,7 @@ public class MainActivity extends Activity {
     private void refreshLiveData() {
         boolean running = isRunning();
         status.setText(L10n.t(this, running ? "radar_active" : "radar_standby"));
-        status.setTextColor(running ? text : muted);
+        status.setTextColor(running ? GREEN : muted);
         toggle.setText(L10n.t(this, running ? "stop_monitoring" : "start_monitoring"));
         styleToggle(running);
 
@@ -442,8 +442,12 @@ public class MainActivity extends Activity {
         lastScanValue.setText(lastScan == 0 ? "—" : new SimpleDateFormat("HH:mm:ss", Locale.getDefault())
                 .format(new Date(lastScan)));
         String callsign = preferences.getString(AppPreferences.KEY_NEAREST_CALLSIGN, "");
-        if (callsign.isEmpty()) nearestValue.setText(L10n.t(this, "no_contact"));
+        if (callsign.isEmpty()) {
+            nearestValue.setTextColor(muted);
+            nearestValue.setText(L10n.t(this, "no_contact"));
+        }
         else {
+            nearestValue.setTextColor(ORANGE);
             double distance = Double.longBitsToDouble(preferences.getLong(
                     AppPreferences.KEY_NEAREST_DISTANCE_KM, Double.doubleToLongBits(Double.NaN)));
             double altitude = Double.longBitsToDouble(preferences.getLong(

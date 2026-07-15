@@ -47,7 +47,7 @@ final class SettingsPanel extends ScrollView {
                 29, text, Typeface.BOLD);
         root.addView(title);
         TextView subtitle = label(L10n.t(host, "configuration"),
-                11, muted, Typeface.BOLD);
+                11, MARColors.BLUE, Typeface.BOLD);
         subtitle.setLetterSpacing(0.12f);
         subtitle.setPadding(0, dp(5), 0, 0);
         root.addView(subtitle);
@@ -195,7 +195,7 @@ final class SettingsPanel extends ScrollView {
     }
 
     private void section(LinearLayout root, String title) {
-        TextView heading = label(title, 11, muted, Typeface.BOLD);
+        TextView heading = label(title, 11, MARColors.BLUE, Typeface.BOLD);
         heading.setLetterSpacing(0.12f);
         heading.setPadding(dp(4), dp(24), 0, dp(10));
         root.addView(heading);

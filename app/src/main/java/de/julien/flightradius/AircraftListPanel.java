@@ -44,7 +44,7 @@ final class AircraftListPanel extends ScrollView {
         TextView title = label(L10n.t(host, "session_aircraft"), 29, text, Typeface.BOLD);
         root.addView(title);
         TextView subtitle = label(L10n.t(host, "since_app_start"),
-                11, muted, Typeface.BOLD);
+                11, MARColors.BLUE, Typeface.BOLD);
         subtitle.setLetterSpacing(0.1f);
         subtitle.setPadding(0, dp(5), 0, 0);
         root.addView(subtitle);
@@ -79,7 +79,7 @@ final class AircraftListPanel extends ScrollView {
         card.setOrientation(LinearLayout.VERTICAL);
         String callsign = plane.optString("callsign", "");
         card.addView(label(callsign.isEmpty() ? L10n.t(host, "no_callsign") : callsign,
-                21, text, Typeface.BOLD));
+                21, MARColors.ORANGE, Typeface.BOLD));
         card.addView(label(plane.optString("type", "—") + "  •  "
                 + plane.optString("registration", "—"), 12, muted, Typeface.BOLD));
         boolean inRange = plane.optBoolean("in_range", false);
