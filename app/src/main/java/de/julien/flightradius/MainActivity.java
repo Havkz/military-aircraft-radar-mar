@@ -343,6 +343,7 @@ public class MainActivity extends Activity {
                     .putBoolean(AppPreferences.KEY_RUNNING, false)
                     .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
                     .apply();
+            AppPreferences.clearLiveTelemetry(this);
             refreshLiveData();
         } else requestAndStart();
         ObjectAnimator.ofFloat(toggle, "scaleX", 0.96f, 1f).setDuration(220).start();
@@ -362,11 +363,12 @@ public class MainActivity extends Activity {
                     Manifest.permission.ACCESS_FINE_LOCATION}, REQUEST_PERMISSIONS);
             return;
         }
-        startForegroundService(new Intent(this, MonitorService.class));
+        AppPreferences.clearLiveTelemetry(this);
         preferences.edit()
                 .putBoolean(AppPreferences.KEY_RUNNING, true)
                 .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, true)
                 .apply();
+        startForegroundService(new Intent(this, MonitorService.class));
         refreshLiveData();
     }
 
@@ -413,6 +415,7 @@ public class MainActivity extends Activity {
                 .putString(AppPreferences.KEY_AIRCRAFT_HISTORY_JSON, "[]")
                 .apply();
         stopService(new Intent(this, MonitorService.class));
+        AppPreferences.clearLiveTelemetry(this);
         getSystemService(android.app.NotificationManager.class).cancelAll();
         super.onBackPressed();
     }
@@ -428,7 +431,7 @@ public class MainActivity extends Activity {
         toggle.setText(L10n.t(this, running ? "stop_monitoring" : "start_monitoring"));
         styleToggle(running);
 
-        int count = preferences.getInt(AppPreferences.KEY_LIVE_COUNT, 0);
+        int count = running ? preferences.getInt(AppPreferences.KEY_LIVE_COUNT, 0) : 0;
         countValue.setText(String.valueOf(count));
         String connection = preferences.getString(AppPreferences.KEY_CONNECTION, "standby");
         radar.setScanning(running && "connected".equals(connection));
@@ -438,11 +441,15 @@ public class MainActivity extends Activity {
         if (!loading) connectionValue.setText(running
                 ? L10n.t(this, "connected") : L10n.t(this, "paused"));
 
-        long lastScan = preferences.getLong(AppPreferences.KEY_LAST_SCAN, 0L);
+        long lastScan = running ? preferences.getLong(AppPreferences.KEY_LAST_SCAN, 0L) : 0L;
         lastScanValue.setText(lastScan == 0 ? "—" : new SimpleDateFormat("HH:mm:ss", Locale.getDefault())
                 .format(new Date(lastScan)));
         String callsign = preferences.getString(AppPreferences.KEY_NEAREST_CALLSIGN, "");
-        if (callsign.isEmpty()) {
+        if (!running || !"connected".equals(connection)) {
+            nearestValue.setTextColor(muted);
+            nearestValue.setText("—");
+        }
+        else if (callsign.isEmpty()) {
             nearestValue.setTextColor(muted);
             nearestValue.setText(L10n.t(this, "no_contact"));
         }

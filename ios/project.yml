@@ -18,8 +18,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: de.julien.flightradius.ios
         PRODUCT_NAME: MAR
-        MARKETING_VERSION: "4.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "2"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Military Aircraft Radar
         INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: MAR uses your location to find military aircraft inside the selected radius.

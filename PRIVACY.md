@@ -12,7 +12,7 @@ App preferences and recent aircraft state are stored locally in platform-managed
 
 ## Data sent to third parties
 
-Android normally requests ADSB.lol's global military feed and calculates distance on the device. If that request fails, Android's fallback request sends the device latitude, longitude, and selected radius to ADSB.lol in order to retrieve nearby aircraft. The iOS implementation currently uses the nearby-aircraft request and therefore sends those values while scanning. In all cases, ADSB.lol can receive the connection's IP address.
+While monitoring is active, Android and iOS send the device latitude, longitude, and selected radius to ADSB.lol's nearby-aircraft endpoint. The applications then classify and filter the returned aircraft locally. ADSB.lol can also receive the connection's IP address.
 
 When the user chooses to open an aircraft in Flightradar24 or ADS-B Exchange, Android opens the selected service's app or website with aircraft-identifying or map-position information in the link. Those services process data under their own terms and privacy policies.
 

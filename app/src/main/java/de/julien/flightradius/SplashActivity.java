@@ -86,6 +86,7 @@ public class SplashActivity extends Activity {
                 .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
                 .putString(AppPreferences.KEY_CONNECTION, "standby")
                 .apply();
+        AppPreferences.clearLiveTelemetry(this);
     }
 
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }

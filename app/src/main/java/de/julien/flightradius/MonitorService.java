@@ -53,7 +53,6 @@ public class MonitorService extends Service implements LocationListener {
     static final String ACTION_RADIUS_CHANGED = "de.julien.flightradius.RADIUS_CHANGED";
     private static final long DISMISSED_RESEND_DELAY_MS = 5 * 60 * 1000L;
     private static final int STATUS_NOTIFICATION_ID = 1001;
-    private static final int MILITARY_FLAG = 1;
 
     private final Map<String, JSONObject> lastKnownAlerts = new HashMap<>();
     private final Map<String, JSONObject> sessionHistory = new LinkedHashMap<>();
@@ -158,6 +157,7 @@ public class MonitorService extends Service implements LocationListener {
                 .putBoolean(AppPreferences.KEY_RUNNING, false)
                 .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
                 .putString(AppPreferences.KEY_CONNECTION, "standby").apply();
+        AppPreferences.clearLiveTelemetry(this);
         if (locationManager != null) locationManager.removeUpdates(this);
         if (worker != null) worker.removeCallbacksAndMessages(null);
         if (workerThread != null) workerThread.quitSafely();
@@ -207,14 +207,7 @@ public class MonitorService extends Service implements LocationListener {
                 own.getLatitude(), own.getLongitude(), radiusNm);
 
         try {
-            JSONArray aircraft;
-            boolean militaryEndpoint = true;
-            try {
-                aircraft = fetchAircraft("https://api.adsb.lol/v2/mil");
-            } catch (Exception militaryFailure) {
-                militaryEndpoint = false;
-                aircraft = fetchAircraft(localEndpoint);
-            }
+            JSONArray aircraft = fetchAircraft(localEndpoint);
             JSONArray liveAircraft = new JSONArray();
             Set<String> currentlyInside = new HashSet<>();
             long scanTime = System.currentTimeMillis();
@@ -225,20 +218,17 @@ public class MonitorService extends Service implements LocationListener {
             if (aircraft != null) {
                 for (int i = 0; i < aircraft.length(); i++) {
                     JSONObject plane = aircraft.optJSONObject(i);
-                    if (plane == null || (!militaryEndpoint
-                            && (plane.optInt("dbFlags", 0) & MILITARY_FLAG) == 0)) continue;
+                    if (!MilitaryClassifier.isMilitary(plane)) continue;
                     double aircraftLat = plane.optDouble("lat", Double.NaN);
                     double aircraftLon = plane.optDouble("lon", Double.NaN);
-                    if (Double.isNaN(aircraftLat) || Double.isNaN(aircraftLon)) continue;
-                    float[] distanceMeters = new float[1];
-                    Location.distanceBetween(own.getLatitude(), own.getLongitude(),
-                            aircraftLat, aircraftLon, distanceMeters);
-                    double distanceKm = distanceMeters[0] / 1000d;
+                    double distanceKm = DistanceCalculator.kilometers(
+                            own.getLatitude(), own.getLongitude(), aircraftLat, aircraftLon);
                     if (Double.isNaN(distanceKm) || distanceKm > radiusKm) continue;
 
                     String hex = plane.optString("hex", "unknown").replace("~", "");
                     String callsign = plane.optString("flight", "").trim();
-                    double altitudeFt = altitudeFeet(plane.opt("alt_baro"));
+                    double altitudeFt = altitudeFeet(
+                            plane.opt("alt_geom"), plane.opt("alt_baro"));
                     militaryCount++;
                     currentlyInside.add(hex);
                     JSONObject compact = compactAircraft(plane, hex, callsign,
@@ -411,9 +401,16 @@ public class MonitorService extends Service implements LocationListener {
         getSystemService(NotificationManager.class).notify(notificationId, notification);
     }
 
-    private double altitudeFeet(Object value) {
+    static double altitudeFeet(Object geometricValue, Object barometricValue) {
+        double geometricFeet = altitudeValueFeet(geometricValue);
+        if (!Double.isNaN(geometricFeet)) return geometricFeet;
+        return altitudeValueFeet(barometricValue);
+    }
+
+    private static double altitudeValueFeet(Object value) {
         if (value instanceof Number) {
-            return ((Number) value).doubleValue();
+            double feet = ((Number) value).doubleValue();
+            return Double.isInfinite(feet) ? Double.NaN : feet;
         }
         if (value instanceof String && "ground".equalsIgnoreCase((String) value)) return 0;
         return Double.NaN;
