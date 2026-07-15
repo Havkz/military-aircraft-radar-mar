@@ -82,6 +82,7 @@ public class SettingsActivity extends Activity {
                 AppPreferences.KEY_TRACKER,
                 new String[]{"flightradar", "adsbexchange"},
                 new String[]{"Flightradar24", "ADS-B Exchange"}, false);
+        addTrackerHint(root);
         addSwitch(root, L10n.t(this, "vibration"));
 
         section(root, L10n.t(this, "information"));
@@ -222,6 +223,14 @@ public class SettingsActivity extends Activity {
         heading.setLetterSpacing(0.13f);
         heading.setPadding(dp(4), dp(24), 0, dp(10));
         root.addView(heading);
+    }
+
+    private void addTrackerHint(LinearLayout root) {
+        TextView hint = label("ⓘ  " + L10n.t(this, "adsb_recommended"),
+                11, BLUE, Typeface.NORMAL);
+        hint.setLineSpacing(0, 1.2f);
+        hint.setPadding(dp(8), 0, dp(8), dp(12));
+        root.addView(hint);
     }
 
     private LinearLayout card() {
