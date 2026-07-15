@@ -12,11 +12,11 @@ Military Aircraft Radar is a native Android and iOS project that monitors nearby
 ## Features
 
 - Filters nearby ADS-B records using the military flag supplied by ADSB.lol
-- Adjustable monitoring radius from 10 to 300 km
+- Adjustable monitoring radius from 10 to 300 km with a one-tap recommended 25 km preset
 - Refresh intervals of 10, 30, or 60 seconds
 - Individual aircraft notifications that continuously refresh distance and altitude while the contact remains in range
 - Marks a tracked notification as out of range when the contact leaves the radius or disappears from a successful ADSB.lol scan
-- Suppresses a dismissed aircraft notification for five minutes before showing its latest state again
+- Suppresses a dismissed aircraft notification for five minutes and only shows it again while the contact is inside the current radius
 - Session history containing every military aircraft seen since the app process started, including first and last in-range times
 - Opens notification targets at the aircraft position in Flightradar24 or by ICAO address in the installed ADS-B Exchange web app, with browser fallbacks
 - Live aircraft list with animated detail views

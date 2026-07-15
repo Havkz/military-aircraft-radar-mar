@@ -162,9 +162,23 @@ public class MainActivity extends Activity {
                 if (fromUser) preferences.edit().putInt(AppPreferences.KEY_RADIUS_KM, progress + 10).apply();
             }
             @Override public void onStartTrackingTouch(SeekBar bar) { }
-            @Override public void onStopTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) {
+                requestRadiusRefresh();
+            }
         });
         rangeCard.addView(range, new LinearLayout.LayoutParams(-1, -2));
+        Button recommended = secondaryButton(
+                L10n.t(this, "recommended_distance") + "  •  25 km");
+        recommended.setTextColor(GREEN);
+        recommended.setOnClickListener(v -> {
+            range.setProgress(15);
+            preferences.edit().putInt(AppPreferences.KEY_RADIUS_KM, 25).apply();
+            updateRadius(25);
+            requestRadiusRefresh();
+        });
+        LinearLayout.LayoutParams recommendedParams = new LinearLayout.LayoutParams(-1, dp(46));
+        recommendedParams.setMargins(0, dp(5), 0, 0);
+        rangeCard.addView(recommended, recommendedParams);
         root.addView(rangeCard, cardParams());
 
         toggle = neonButton("");
@@ -326,6 +340,12 @@ public class MainActivity extends Activity {
     }
 
     private void updateRadius(int km) { radiusValue.setText(AppPreferences.distance(this, km)); }
+
+    private void requestRadiusRefresh() {
+        if (!isRunning()) return;
+        startService(new Intent(this, MonitorService.class)
+                .setAction(MonitorService.ACTION_RADIUS_CHANGED));
+    }
 
     private String signature() {
         return preferences.getString(AppPreferences.KEY_THEME, "oled") + "|"

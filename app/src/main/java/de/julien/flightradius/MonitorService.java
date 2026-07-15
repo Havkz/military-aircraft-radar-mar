@@ -50,6 +50,7 @@ public class MonitorService extends Service implements LocationListener {
     private static final String ACTION_STOP = "de.julien.flightradius.STOP";
     private static final String ACTION_NOTIFICATION_DISMISSED =
             "de.julien.flightradius.NOTIFICATION_DISMISSED";
+    static final String ACTION_RADIUS_CHANGED = "de.julien.flightradius.RADIUS_CHANGED";
     private static final long DISMISSED_RESEND_DELAY_MS = 5 * 60 * 1000L;
     private static final int STATUS_NOTIFICATION_ID = 1001;
     private static final int MILITARY_FLAG = 1;
@@ -121,7 +122,13 @@ public class MonitorService extends Service implements LocationListener {
                 getSystemService(NotificationManager.class).cancel(hex.hashCode());
             }
         }
-        if (!pollingScheduled && worker != null) {
+        if (intent != null && ACTION_RADIUS_CHANGED.equals(intent.getAction())
+                && pollingScheduled && worker != null) {
+            worker.post(() -> {
+                worker.removeCallbacks(pollTask);
+                worker.post(pollTask);
+            });
+        } else if (!pollingScheduled && worker != null) {
             pollingScheduled = true;
             worker.post(pollTask);
         }
@@ -334,10 +341,11 @@ public class MonitorService extends Service implements LocationListener {
         String hex = aircraft.optString("hex", "");
         if (callsign.isEmpty() || hex.isEmpty()) return;
         long now = System.currentTimeMillis();
-        long suppressedUntil = notificationSuppressedUntil.containsKey(hex)
-                ? notificationSuppressedUntil.get(hex) : 0L;
-        if (suppressedUntil > now) return;
-        notificationSuppressedUntil.remove(hex);
+        Long suppressedUntil = notificationSuppressedUntil.get(hex);
+        if (suppressedUntil != null) {
+            if (!inRange || suppressedUntil > now) return;
+            notificationSuppressedUntil.remove(hex);
+        }
 
         double distanceKm = aircraft.optDouble("distance_km", Double.NaN);
         double altitudeFt = aircraft.isNull("altitude_ft")
