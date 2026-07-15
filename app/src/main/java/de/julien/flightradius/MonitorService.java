@@ -298,7 +298,7 @@ public class MonitorService extends Service implements LocationListener {
                 L10n.t(this, "alert_channel"), NotificationManager.IMPORTANCE_HIGH);
         alerts.setDescription(L10n.t(this, "alert_description"));
         alerts.enableLights(true);
-        alerts.setLightColor(Color.rgb(217, 130, 69));
+        alerts.setLightColor(MARColors.ORANGE);
         alerts.enableVibration(AppPreferences.get(this)
                 .getBoolean(AppPreferences.KEY_VIBRATION, true));
         nm.createNotificationChannel(status);
@@ -317,7 +317,7 @@ public class MonitorService extends Service implements LocationListener {
                 .setSmallIcon(R.drawable.ic_notification_radar)
                 .setContentTitle(L10n.t(this, "live_radar"))
                 .setContentText(L10n.t(this, "monitoring_running"))
-                .setColor(Color.rgb(96, 105, 110))
+                .setColor(MARColors.DARK_MUTED)
                 .setColorized(false)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
@@ -360,7 +360,7 @@ public class MonitorService extends Service implements LocationListener {
             String state = L10n.t(this, "out_of_range");
             SpannableString redState = new SpannableString(state + "  •  "
                     + AppPreferences.altitude(this, altitudeFt));
-            redState.setSpan(new ForegroundColorSpan(Color.rgb(211, 75, 75)),
+            redState.setSpan(new ForegroundColorSpan(MARColors.RED),
                     0, state.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             details = redState;
         }
@@ -385,7 +385,7 @@ public class MonitorService extends Service implements LocationListener {
                 .setContentText(details)
                 .setStyle(new Notification.BigTextStyle().bigText(details))
                 .setSubText(L10n.t(this, "found_via"))
-                .setColor(inRange ? Color.rgb(217, 130, 69) : Color.rgb(211, 75, 75))
+                .setColor(inRange ? MARColors.ORANGE : MARColors.RED)
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setContentIntent(tracker)
                 .setDeleteIntent(dismissed)
@@ -514,11 +514,11 @@ public class MonitorService extends Service implements LocationListener {
         Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(Color.BLACK);
+        paint.setColor(MARColors.INK);
         canvas.drawCircle(64, 64, 62, paint);
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(4);
-        paint.setColor(alert ? Color.rgb(217, 130, 69) : Color.rgb(79, 138, 101));
+        paint.setColor(alert ? MARColors.ORANGE : MARColors.GREEN);
         canvas.drawCircle(64, 64, 50, paint);
         canvas.drawCircle(64, 64, 30, paint);
         canvas.drawLine(64, 14, 64, 114, paint);

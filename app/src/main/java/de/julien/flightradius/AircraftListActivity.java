@@ -22,9 +22,9 @@ import java.util.Date;
 import java.util.Locale;
 
 public class AircraftListActivity extends Activity {
-    private static final int GREEN = Color.rgb(79, 138, 101);
-    private static final int BLUE = Color.rgb(82, 122, 163);
-    private static final int RED = Color.rgb(211, 75, 75);
+    private static final int GREEN = MARColors.GREEN;
+    private static final int BLUE = MARColors.BLUE;
+    private static final int RED = MARColors.RED;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private LinearLayout contacts;
     private int background, surface, text, muted;
@@ -38,10 +38,10 @@ public class AircraftListActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         dark = AppPreferences.isDark(this); L10n.applyDirection(this);
-        background = dark ? Color.rgb(0, 4, 8) : Color.rgb(244, 246, 243);
-        surface = dark ? Color.rgb(10, 14, 19) : Color.WHITE;
-        text = dark ? Color.rgb(228, 232, 235) : Color.rgb(21, 30, 39);
-        muted = dark ? Color.rgb(139, 149, 156) : Color.rgb(94, 105, 113);
+        background = dark ? MARColors.DARK_BACKGROUND : MARColors.LIGHT_BACKGROUND;
+        surface = dark ? MARColors.DARK_SURFACE : MARColors.LIGHT_SURFACE;
+        text = dark ? MARColors.DARK_TEXT : MARColors.LIGHT_TEXT;
+        muted = dark ? MARColors.DARK_MUTED : MARColors.LIGHT_MUTED;
         buildUi();
     }
 
@@ -58,6 +58,7 @@ public class AircraftListActivity extends Activity {
         contacts = new LinearLayout(this); contacts.setOrientation(LinearLayout.VERTICAL);
         contacts.setPadding(0, dp(18), 0, 0); root.addView(contacts);
         setContentView(scroll);
+        SystemBars.apply(this, scroll, dark, background);
     }
 
     private void updateList() {
@@ -115,7 +116,8 @@ public class AircraftListActivity extends Activity {
     private LinearLayout card() {
         LinearLayout v = new LinearLayout(this); v.setPadding(dp(18), dp(16), dp(18), dp(16));
         GradientDrawable bg = new GradientDrawable(); bg.setColor(surface); bg.setCornerRadius(dp(18));
-        bg.setStroke(dp(1), dark ? Color.rgb(38, 53, 65) : Color.rgb(208, 215, 211)); v.setBackground(bg); return v;
+        bg.setStroke(dp(1), dark ? MARColors.DARK_BORDER : MARColors.LIGHT_BORDER);
+        v.setBackground(bg); return v;
     }
     private TextView label(String s, float z, int c, int style) {
         TextView v = new TextView(this); v.setText(s); v.setTextSize(z); v.setTextColor(c);

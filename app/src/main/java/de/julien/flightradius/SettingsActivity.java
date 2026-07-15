@@ -19,9 +19,8 @@ import android.widget.Switch;
 import android.widget.TextView;
 
 public class SettingsActivity extends Activity {
-    private static final int GREEN = Color.rgb(79, 138, 101);
-    private static final int BLUE = Color.rgb(82, 122, 163);
-    private static final int ORANGE = Color.rgb(217, 130, 69);
+    private static final int GREEN = MARColors.GREEN;
+    private static final int BLUE = MARColors.BLUE;
     private SharedPreferences prefs;
     private boolean dark;
     private int background;
@@ -38,10 +37,10 @@ public class SettingsActivity extends Activity {
         prefs = AppPreferences.get(this);
         L10n.applyDirection(this);
         dark = AppPreferences.isDark(this);
-        background = dark ? Color.rgb(0, 4, 8) : Color.rgb(244, 246, 243);
-        surface = dark ? Color.rgb(10, 14, 19) : Color.WHITE;
-        text = dark ? Color.rgb(228, 232, 235) : Color.rgb(21, 30, 39);
-        muted = dark ? Color.rgb(139, 149, 156) : Color.rgb(94, 105, 113);
+        background = dark ? MARColors.DARK_BACKGROUND : MARColors.LIGHT_BACKGROUND;
+        surface = dark ? MARColors.DARK_SURFACE : MARColors.LIGHT_SURFACE;
+        text = dark ? MARColors.DARK_TEXT : MARColors.LIGHT_TEXT;
+        muted = dark ? MARColors.DARK_MUTED : MARColors.LIGHT_MUTED;
         getWindow().setStatusBarColor(background);
         buildUi();
     }
@@ -89,13 +88,15 @@ public class SettingsActivity extends Activity {
         LinearLayout info = card();
         info.setOrientation(LinearLayout.VERTICAL);
         info.addView(label("Military Aircraft Radar - MAR", 16, text, Typeface.BOLD));
-        TextView version = label("Version 4.0\nADSB.lol\nFlightradar24 / ADS-B Exchange",
+        TextView version = label("Version " + versionName()
+                        + "\nADSB.lol\nFlightradar24 / ADS-B Exchange",
                 12, muted, Typeface.NORMAL);
         version.setPadding(0, dp(8), 0, 0);
         version.setLineSpacing(0, 1.3f);
         info.addView(version);
         root.addView(info, cardParams());
         setContentView(scroll);
+        SystemBars.apply(this, scroll, dark, background);
     }
 
     private void addDropdown(LinearLayout root, String title, String key, String[] values,
@@ -140,10 +141,11 @@ public class SettingsActivity extends Activity {
         GradientDrawable panelBackground = new GradientDrawable();
         panelBackground.setColor(surface);
         panelBackground.setCornerRadius(dp(24));
-        panelBackground.setStroke(dp(1), dark ? Color.rgb(48, 65, 78) : Color.rgb(200, 209, 204));
+        panelBackground.setStroke(dp(1), dark
+                ? MARColors.DARK_BORDER : MARColors.LIGHT_BORDER);
         panel.setBackground(panelBackground);
 
-        TextView heading = label(title.toUpperCase(), 12, ORANGE, Typeface.BOLD);
+        TextView heading = label(title.toUpperCase(), 12, BLUE, Typeface.BOLD);
         heading.setLetterSpacing(0.1f);
         heading.setPadding(dp(4), 0, dp(4), dp(12));
         panel.addView(heading);
@@ -157,7 +159,7 @@ public class SettingsActivity extends Activity {
             option.setPadding(dp(15), dp(13), dp(15), dp(13));
             GradientDrawable optionBackground = new GradientDrawable();
             optionBackground.setColor(active
-                    ? (dark ? Color.rgb(24, 39, 31) : Color.rgb(232, 240, 234))
+                    ? (dark ? MARColors.DARK_SELECTED : MARColors.LIGHT_SELECTED)
                     : Color.TRANSPARENT);
             optionBackground.setCornerRadius(dp(14));
             option.setBackground(optionBackground);
@@ -205,14 +207,18 @@ public class SettingsActivity extends Activity {
 
     private LinearLayout settingRow(String title) {
         LinearLayout row = card();
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.addView(label(title, 14, text, Typeface.BOLD), new LinearLayout.LayoutParams(0, -2, 1f));
-        row.addView(label("", 13, BLUE, Typeface.BOLD));
+        row.setOrientation(LinearLayout.VERTICAL);
+        TextView heading = label(title, 12, muted, Typeface.BOLD);
+        heading.setLetterSpacing(0.04f);
+        row.addView(heading, new LinearLayout.LayoutParams(-1, -2));
+        TextView value = label("", 15, BLUE, Typeface.BOLD);
+        value.setPadding(0, dp(7), 0, 0);
+        row.addView(value, new LinearLayout.LayoutParams(-1, -2));
         return row;
     }
 
     private void section(LinearLayout root, String title) {
-        TextView heading = label(title, 11, ORANGE, Typeface.BOLD);
+        TextView heading = label(title, 11, BLUE, Typeface.BOLD);
         heading.setLetterSpacing(0.13f);
         heading.setPadding(dp(4), dp(24), 0, dp(10));
         root.addView(heading);
@@ -224,7 +230,7 @@ public class SettingsActivity extends Activity {
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(surface);
         bg.setCornerRadius(dp(17));
-        bg.setStroke(dp(1), dark ? Color.rgb(38, 53, 65) : Color.rgb(208, 215, 211));
+        bg.setStroke(dp(1), dark ? MARColors.DARK_BORDER : MARColors.LIGHT_BORDER);
         view.setBackground(bg);
         return view;
     }
@@ -256,6 +262,13 @@ public class SettingsActivity extends Activity {
     private int indexOf(int[] values, int value) {
         for (int i = 0; i < values.length; i++) if (values[i] == value) return i;
         return 0;
+    }
+    private String versionName() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception ignored) {
+            return "—";
+        }
     }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
 }

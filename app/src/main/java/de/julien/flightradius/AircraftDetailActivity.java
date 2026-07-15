@@ -19,10 +19,10 @@ import java.util.Date;
 import java.util.Locale;
 
 public class AircraftDetailActivity extends Activity {
-    private static final int GREEN = Color.rgb(79, 138, 101);
-    private static final int BLUE = Color.rgb(82, 122, 163);
-    private static final int ORANGE = Color.rgb(217, 130, 69);
-    private static final int RED = Color.rgb(211, 75, 75);
+    private static final int GREEN = MARColors.GREEN;
+    private static final int BLUE = MARColors.BLUE;
+    private static final int ORANGE = MARColors.ORANGE;
+    private static final int RED = MARColors.RED;
     private boolean dark;
     private int background, surface, text, muted;
     private JSONObject aircraft;
@@ -30,10 +30,10 @@ public class AircraftDetailActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         dark = AppPreferences.isDark(this); L10n.applyDirection(this);
-        background = dark ? Color.rgb(0, 4, 8) : Color.rgb(244, 246, 243);
-        surface = dark ? Color.rgb(10, 14, 19) : Color.WHITE;
-        text = dark ? Color.rgb(228, 232, 235) : Color.rgb(21, 30, 39);
-        muted = dark ? Color.rgb(139, 149, 156) : Color.rgb(94, 105, 113);
+        background = dark ? MARColors.DARK_BACKGROUND : MARColors.LIGHT_BACKGROUND;
+        surface = dark ? MARColors.DARK_SURFACE : MARColors.LIGHT_SURFACE;
+        text = dark ? MARColors.DARK_TEXT : MARColors.LIGHT_TEXT;
+        muted = dark ? MARColors.DARK_MUTED : MARColors.LIGHT_MUTED;
         try { aircraft = new JSONObject(getIntent().getStringExtra("aircraft")); }
         catch (Exception e) { aircraft = new JSONObject(); }
         buildUi();
@@ -90,6 +90,7 @@ public class AircraftDetailActivity extends Activity {
         LinearLayout.LayoutParams trackerParams = new LinearLayout.LayoutParams(-1, dp(60));
         trackerParams.setMargins(0, dp(10), 0, 0); root.addView(tracker, trackerParams);
         setContentView(scroll);
+        SystemBars.apply(this, scroll, dark, background);
         root.setAlpha(0f); root.animate().alpha(1f).setDuration(380).start();
     }
 
@@ -119,13 +120,14 @@ public class AircraftDetailActivity extends Activity {
 
     private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setPadding(dp(17), dp(15), dp(17), dp(15));
         GradientDrawable bg = new GradientDrawable(); bg.setColor(surface); bg.setCornerRadius(dp(16));
-        bg.setStroke(dp(1), dark ? Color.rgb(38, 53, 65) : Color.rgb(208, 215, 211)); v.setBackground(bg); return v; }
+        bg.setStroke(dp(1), dark ? MARColors.DARK_BORDER : MARColors.LIGHT_BORDER);
+        v.setBackground(bg); return v; }
     private TextView label(String s, float z, int c, int style) { TextView v = new TextView(this); v.setText(s);
         v.setTextSize(z); v.setTextColor(c); v.setTypeface(Typeface.create("sans-serif", style)); return v; }
     private Button button(String s) { Button b = new Button(this); b.setText(s); b.setTextColor(BLUE); b.setTextSize(12);
         b.setTypeface(Typeface.DEFAULT_BOLD); b.setAllCaps(false); b.setStateListAnimator(null); b.setBackground(card().getBackground()); return b; }
-    private Button neonButton(String s) { Button b = button(s); b.setTextColor(Color.BLACK);
-        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[]{GREEN, BLUE}); bg.setCornerRadius(dp(18)); b.setBackground(bg); return b; }
+    private Button neonButton(String s) { Button b = button(s); b.setTextColor(Color.WHITE);
+        GradientDrawable bg = new GradientDrawable(); bg.setColor(BLUE);
+        bg.setCornerRadius(dp(18)); b.setBackground(bg); b.setElevation(dp(2)); return b; }
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 }

@@ -20,6 +20,8 @@ Military Aircraft Radar is a native Android and iOS project that monitors nearby
 - Session history containing every military aircraft seen since the app process started, including first and last in-range times
 - Opens notification targets at the aircraft position in Flightradar24 or by ICAO address in the installed ADS-B Exchange web app, with browser fallbacks
 - Live aircraft list with animated detail views
+- Minimal semantic color system with saturated accents, neutral surfaces, and icon-first navigation
+- System-bar and display-cutout insets keep controls clear of status and navigation areas
 - OLED dark, light, and system themes
 - English, Mandarin Chinese, Hindi, Spanish, French, Arabic, Bengali, Portuguese, Russian, and German, plus automatic system-language selection
 - Aviation units (NM / ft) or metric units (km / m)

@@ -30,9 +30,9 @@ import java.util.Locale;
 
 public class MainActivity extends Activity {
     private static final int REQUEST_PERMISSIONS = 100;
-    private static final int GREEN = Color.rgb(79, 138, 101);
-    private static final int BLUE = Color.rgb(82, 122, 163);
-    private static final int ORANGE = Color.rgb(217, 130, 69);
+    private static final int GREEN = MARColors.GREEN;
+    private static final int BLUE = MARColors.BLUE;
+    private static final int ORANGE = MARColors.ORANGE;
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
 
     private SharedPreferences preferences;
@@ -69,10 +69,10 @@ public class MainActivity extends Activity {
 
     private void applyPalette() {
         boolean dark = AppPreferences.isDark(this);
-        background = dark ? Color.rgb(0, 4, 8) : Color.rgb(244, 246, 243);
-        surface = dark ? Color.rgb(10, 14, 19) : Color.WHITE;
-        text = dark ? Color.rgb(228, 232, 235) : Color.rgb(21, 30, 39);
-        muted = dark ? Color.rgb(139, 149, 156) : Color.rgb(94, 105, 113);
+        background = dark ? MARColors.DARK_BACKGROUND : MARColors.LIGHT_BACKGROUND;
+        surface = dark ? MARColors.DARK_SURFACE : MARColors.LIGHT_SURFACE;
+        text = dark ? MARColors.DARK_TEXT : MARColors.LIGHT_TEXT;
+        muted = dark ? MARColors.DARK_MUTED : MARColors.LIGHT_MUTED;
         getWindow().setStatusBarColor(background);
         getWindow().setNavigationBarColor(background);
         if (!dark && Build.VERSION.SDK_INT >= 26) {
@@ -167,8 +167,8 @@ public class MainActivity extends Activity {
             }
         });
         rangeCard.addView(range, new LinearLayout.LayoutParams(-1, -2));
-        Button recommended = secondaryButton(
-                L10n.t(this, "recommended_distance") + "  •  25 km");
+        Button recommended = secondaryButton("★  25 km");
+        recommended.setContentDescription(L10n.t(this, "recommended_distance") + ": 25 km");
         recommended.setTextColor(GREEN);
         recommended.setOnClickListener(v -> {
             range.setProgress(15);
@@ -197,11 +197,17 @@ public class MainActivity extends Activity {
         LinearLayout navigation = new LinearLayout(this);
         navigation.setGravity(Gravity.CENTER);
         navigation.setPadding(0, dp(12), 0, 0);
-        Button radarNav = secondaryButton("◉  RADAR");
+        Button radarNav = secondaryButton("◎");
+        radarNav.setTextSize(22);
+        radarNav.setContentDescription(L10n.t(this, "live_radar"));
         radarNav.setTextColor(GREEN);
-        Button listNav = secondaryButton("☷  " + L10n.t(this, "aircraft"));
+        Button listNav = secondaryButton("✈");
+        listNav.setTextSize(21);
+        listNav.setContentDescription(L10n.t(this, "aircraft"));
         listNav.setOnClickListener(v -> startActivity(new Intent(this, AircraftListActivity.class)));
-        Button settingsNav = secondaryButton("⚙  " + L10n.t(this, "settings").toUpperCase(Locale.ROOT));
+        Button settingsNav = secondaryButton("⚙");
+        settingsNav.setTextSize(21);
+        settingsNav.setContentDescription(L10n.t(this, "settings"));
         settingsNav.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
         navigation.addView(radarNav, navParams());
         navigation.addView(listNav, navParams());
@@ -214,6 +220,7 @@ public class MainActivity extends Activity {
         footer.setPadding(0, dp(18), 0, 0);
         root.addView(footer);
         setContentView(scroll);
+        SystemBars.apply(this, scroll, AppPreferences.isDark(this), background);
     }
 
     private TextView addMetric(LinearLayout parent, String title) {
@@ -305,7 +312,7 @@ public class MainActivity extends Activity {
     }
 
     private boolean isRunning() {
-        return MonitorService.isRunning() || preferences.getBoolean(AppPreferences.KEY_RUNNING, false);
+        return preferences.getBoolean(AppPreferences.KEY_RUNNING, false);
     }
 
     private void refreshLiveData() {
@@ -368,7 +375,8 @@ public class MainActivity extends Activity {
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(surface);
         bg.setCornerRadius(dp(18));
-        bg.setStroke(dp(1), AppPreferences.isDark(this) ? Color.rgb(38, 53, 65) : Color.rgb(208, 215, 211));
+        bg.setStroke(dp(1), AppPreferences.isDark(this)
+                ? MARColors.DARK_BORDER : MARColors.LIGHT_BORDER);
         view.setBackground(bg);
         view.setElevation(dp(2));
         return view;
@@ -382,7 +390,8 @@ public class MainActivity extends Activity {
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(surface);
         bg.setCornerRadius(dp(17));
-        bg.setStroke(dp(1), Color.rgb(54, 76, 96));
+        bg.setStroke(dp(1), AppPreferences.isDark(this)
+                ? MARColors.DARK_BORDER : MARColors.LIGHT_BORDER);
         button.setBackground(bg);
         button.setStateListAnimator(null);
         return button;
@@ -400,13 +409,13 @@ public class MainActivity extends Activity {
     }
 
     private void styleToggle(boolean running) {
-        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                running ? new int[]{Color.rgb(128, 72, 43), ORANGE}
-                        : new int[]{GREEN, BLUE});
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(running ? surface : GREEN);
         bg.setCornerRadius(dp(18));
-        bg.setStroke(dp(1), running ? ORANGE : GREEN);
+        bg.setStroke(dp(running ? 2 : 1), running ? ORANGE : GREEN);
         toggle.setBackground(bg);
-        toggle.setTextColor(running ? Color.WHITE : Color.BLACK);
+        toggle.setTextColor(running ? ORANGE : MARColors.INK);
+        toggle.setElevation(dp(running ? 1 : 3));
     }
 
     private Button secondaryButton(String value) {
@@ -414,7 +423,8 @@ public class MainActivity extends Activity {
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(surface);
         bg.setCornerRadius(dp(16));
-        bg.setStroke(dp(1), AppPreferences.isDark(this) ? Color.rgb(43, 55, 68) : Color.rgb(205, 211, 208));
+        bg.setStroke(dp(1), AppPreferences.isDark(this)
+                ? MARColors.DARK_BORDER : MARColors.LIGHT_BORDER);
         button.setBackground(bg);
         button.setTextColor(muted);
         return button;

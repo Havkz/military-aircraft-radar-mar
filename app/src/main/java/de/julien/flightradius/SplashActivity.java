@@ -22,7 +22,7 @@ public class SplashActivity extends Activity {
         clearStaleNotificationsAfterUpdate();
         L10n.applyDirection(this);
         boolean dark = AppPreferences.isDark(this);
-        int background = dark ? Color.rgb(0, 4, 8) : Color.rgb(244, 246, 243);
+        int background = dark ? MARColors.DARK_BACKGROUND : MARColors.LIGHT_BACKGROUND;
         getWindow().setStatusBarColor(background);
         getWindow().setNavigationBarColor(background);
 
@@ -38,19 +38,20 @@ public class SplashActivity extends Activity {
         root.addView(logo, new LinearLayout.LayoutParams(dp(150), dp(150)));
 
         TextView mar = new TextView(this);
-        mar.setText("MAR"); mar.setTextSize(42); mar.setTextColor(Color.rgb(79, 138, 101));
+        mar.setText("MAR"); mar.setTextSize(42); mar.setTextColor(MARColors.GREEN);
         mar.setTypeface(Typeface.DEFAULT_BOLD); mar.setLetterSpacing(0.22f); mar.setGravity(Gravity.CENTER);
         mar.setAlpha(0f);
         root.addView(mar);
 
         TextView name = new TextView(this);
         name.setText(L10n.t(this, "app_title").replace('\n', ' ')); name.setTextSize(11);
-        name.setTextColor(dark ? Color.rgb(139, 149, 156) : Color.rgb(94, 105, 113));
+        name.setTextColor(dark ? MARColors.DARK_MUTED : MARColors.LIGHT_MUTED);
         name.setTypeface(Typeface.DEFAULT_BOLD); name.setLetterSpacing(0.12f); name.setGravity(Gravity.CENTER);
         name.setPadding(0, dp(7), 0, 0); name.setAlpha(0f);
         root.addView(name);
 
         setContentView(root);
+        SystemBars.apply(this, root, dark, background);
         AnimatorSet animation = new AnimatorSet();
         animation.playTogether(
                 ObjectAnimator.ofFloat(logo, "alpha", 0f, 1f),

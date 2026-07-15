@@ -27,13 +27,13 @@ public class RadarView extends View {
         setLayerType(View.LAYER_TYPE_SOFTWARE, null);
         grid.setStyle(Paint.Style.STROKE);
         grid.setStrokeWidth(dp(1));
-        grid.setColor(Color.rgb(45, 65, 78));
+        grid.setColor(MARColors.RADAR_GRID);
         glow.setStyle(Paint.Style.STROKE);
         glow.setStrokeWidth(dp(2));
-        glow.setColor(Color.rgb(79, 138, 101));
-        glow.setShadowLayer(dp(3), 0, 0, Color.rgb(79, 138, 101));
-        target.setColor(Color.rgb(217, 130, 69));
-        target.setShadowLayer(dp(4), 0, 0, Color.rgb(217, 130, 69));
+        glow.setColor(MARColors.GREEN);
+        glow.setShadowLayer(dp(3), 0, 0, MARColors.GREEN);
+        target.setColor(MARColors.ORANGE);
+        target.setShadowLayer(dp(4), 0, 0, MARColors.ORANGE);
 
         animator = ValueAnimator.ofFloat(0f, 360f);
         animator.setDuration(4200);
@@ -48,7 +48,7 @@ public class RadarView extends View {
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         attached = true;
-        if (scanning) animator.start();
+        if (scanning && getWindowVisibility() == View.VISIBLE) animator.start();
     }
 
     @Override protected void onDetachedFromWindow() {
@@ -64,7 +64,7 @@ public class RadarView extends View {
         float radius = Math.min(getWidth(), getHeight()) * 0.43f;
 
         Paint panel = new Paint(Paint.ANTI_ALIAS_FLAG);
-        panel.setColor(darkMode ? Color.rgb(7, 12, 17) : Color.rgb(235, 239, 236));
+        panel.setColor(darkMode ? MARColors.DARK_PANEL : MARColors.LIGHT_PANEL);
         canvas.drawRoundRect(0, 0, getWidth(), getHeight(), dp(24), dp(24), panel);
 
         for (int i = 1; i <= 4; i++) canvas.drawCircle(cx, cy, radius * i / 4f, grid);
@@ -72,21 +72,21 @@ public class RadarView extends View {
         canvas.drawLine(cx, cy - radius, cx, cy + radius, grid);
         canvas.drawCircle(cx, cy, radius, glow);
 
-        canvas.save();
-        canvas.rotate(angle, cx, cy);
-        sweep.setShader(new LinearGradient(cx, cy, cx + radius, cy,
-                new int[]{Color.TRANSPARENT, Color.argb(38, 82, 122, 163), Color.rgb(79, 138, 101)},
-                null, Shader.TileMode.CLAMP));
-        Path beam = new Path();
-        beam.moveTo(cx, cy);
-        beam.lineTo(cx + radius, cy - radius * 0.24f);
-        beam.lineTo(cx + radius, cy);
-        beam.close();
-        canvas.drawPath(beam, sweep);
-        canvas.drawLine(cx, cy, cx + radius, cy, glow);
-        canvas.restore();
-
         if (scanning) {
+            canvas.save();
+            canvas.rotate(angle, cx, cy);
+            sweep.setShader(new LinearGradient(cx, cy, cx + radius, cy,
+                    new int[]{Color.TRANSPARENT, Color.argb(44, 110, 168, 255), MARColors.GREEN},
+                    null, Shader.TileMode.CLAMP));
+            Path beam = new Path();
+            beam.moveTo(cx, cy);
+            beam.lineTo(cx + radius, cy - radius * 0.24f);
+            beam.lineTo(cx + radius, cy);
+            beam.close();
+            canvas.drawPath(beam, sweep);
+            canvas.drawLine(cx, cy, cx + radius, cy, glow);
+            canvas.restore();
+
             pulse(canvas, cx - radius * 0.42f, cy - radius * 0.18f, 5f);
             pulse(canvas, cx + radius * 0.25f, cy + radius * 0.38f, 4f);
             pulse(canvas, cx + radius * 0.48f, cy - radius * 0.47f, 3f);
@@ -96,13 +96,27 @@ public class RadarView extends View {
     public void setScanning(boolean active) {
         if (scanning == active) return;
         scanning = active;
-        if (active && attached && !animator.isStarted()) animator.start();
-        else if (!active) animator.cancel();
+        if (active && attached && getWindowVisibility() == View.VISIBLE
+                && !animator.isStarted()) animator.start();
+        else if (!active) {
+            animator.cancel();
+            angle = 0f;
+        }
         invalidate();
+    }
+
+    @Override protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        if (visibility == View.VISIBLE && scanning && attached && !animator.isStarted()) {
+            animator.start();
+        } else if (visibility != View.VISIBLE) {
+            animator.cancel();
+        }
     }
 
     public void setDarkMode(boolean dark) {
         darkMode = dark;
+        grid.setColor(dark ? MARColors.RADAR_GRID : Color.rgb(161, 190, 176));
         invalidate();
     }
 

@@ -29,7 +29,7 @@ public class BootReceiver extends BroadcastReceiver {
                 L10n.t(context, "restart_reminders"),
                 NotificationManager.IMPORTANCE_DEFAULT);
         channel.setDescription(L10n.t(context, "restart_description"));
-        channel.setLightColor(Color.rgb(217, 130, 69));
+        channel.setLightColor(MARColors.ORANGE);
         manager.createNotificationChannel(channel);
 
         Intent openIntent = new Intent(context, SplashActivity.class)
@@ -40,7 +40,7 @@ public class BootReceiver extends BroadcastReceiver {
                 .setSmallIcon(R.drawable.ic_notification_radar)
                 .setContentTitle(L10n.t(context, "restart_monitoring"))
                 .setContentText(L10n.t(context, "tap_open_radar"))
-                .setColor(Color.rgb(217, 130, 69))
+                .setColor(MARColors.ORANGE)
                 .setCategory(Notification.CATEGORY_REMINDER)
                 .setContentIntent(open)
                 .setAutoCancel(true)
