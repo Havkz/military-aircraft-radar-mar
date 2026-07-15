@@ -2,7 +2,7 @@
 
 [![Android](https://img.shields.io/badge/Android-8.0%2B-4F8A65?logo=android&logoColor=white)](https://developer.android.com/about/versions/oreo)
 [![License: MIT](https://img.shields.io/badge/License-MIT-527AA3.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-4.0-D98245)](app/build.gradle)
+[![Version](https://img.shields.io/badge/version-4.1--beta-D98245)](app/build.gradle)
 
 Military Aircraft Radar is a native Android and iOS project that monitors nearby ADS-B traffic and alerts you when an aircraft marked as military enters the selected radius. It uses a restrained OLED-friendly interface, live telemetry, and direct links to external flight trackers.
 
@@ -14,8 +14,10 @@ Military Aircraft Radar is a native Android and iOS project that monitors nearby
 - Filters nearby ADS-B records using the military flag supplied by ADSB.lol
 - Adjustable monitoring radius from 10 to 300 km
 - Refresh intervals of 10, 30, or 60 seconds
-- Individual aircraft notifications containing callsign, distance, altitude, and the ADSB.lol source label
-- Reposts a dismissed aircraft alert after five minutes while monitoring remains active
+- Individual aircraft notifications that continuously refresh distance and altitude while the contact remains in range
+- Marks a tracked notification as out of range when the contact leaves the radius or disappears from a successful ADSB.lol scan
+- Suppresses a dismissed aircraft notification for five minutes before showing its latest state again
+- Session history containing every military aircraft seen since the app process started, including first and last in-range times
 - Opens notification targets at the aircraft position in Flightradar24 or by ICAO address in the installed ADS-B Exchange web app, with browser fallbacks
 - Live aircraft list with animated detail views
 - OLED dark, light, and system themes

@@ -24,6 +24,7 @@ final class AppPreferences {
     static final String KEY_NEAREST_DISTANCE_KM = "nearest_distance_km";
     static final String KEY_NEAREST_ALTITUDE_FT = "nearest_altitude_ft";
     static final String KEY_AIRCRAFT_JSON = "aircraft_json";
+    static final String KEY_AIRCRAFT_HISTORY_JSON = "aircraft_history_json";
     static final String KEY_APP_VERSION = "app_version";
     static final int DEFAULT_RADIUS_KM = 50;
 
@@ -57,6 +58,7 @@ final class AppPreferences {
     }
 
     static String distance(Context context, double km) {
+        if (Double.isNaN(km)) return "—";
         if (usesMetric(context)) return String.format(Locale.GERMANY, "%.1f km", km);
         return String.format(Locale.US, "%.1f NM", km / 1.852);
     }

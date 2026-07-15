@@ -17,6 +17,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
+        android:name=".MARApplication"
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher_mar"
         android:roundIcon="@drawable/ic_launcher_mar"

@@ -283,6 +283,7 @@ public class MainActivity extends Activity {
                 .putBoolean(AppPreferences.KEY_RUNNING, false)
                 .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
                 .putString(AppPreferences.KEY_CONNECTION, "standby")
+                .putString(AppPreferences.KEY_AIRCRAFT_HISTORY_JSON, "[]")
                 .apply();
         stopService(new Intent(this, MonitorService.class));
         getSystemService(android.app.NotificationManager.class).cancelAll();

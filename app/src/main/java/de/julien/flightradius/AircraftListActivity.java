@@ -17,9 +17,14 @@ import android.widget.TextView;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
 public class AircraftListActivity extends Activity {
     private static final int GREEN = Color.rgb(79, 138, 101);
     private static final int BLUE = Color.rgb(82, 122, 163);
+    private static final int RED = Color.rgb(211, 75, 75);
     private final Handler handler = new Handler(Looper.getMainLooper());
     private LinearLayout contacts;
     private int background, surface, text, muted;
@@ -46,9 +51,9 @@ public class AircraftListActivity extends Activity {
         root.setPadding(dp(22), dp(20), dp(22), dp(30)); scroll.addView(root);
         Button back = button("‹  RADAR"); back.setOnClickListener(v -> finish());
         root.addView(back, new LinearLayout.LayoutParams(-1, dp(48)));
-        TextView title = label(L10n.t(this, "live_aircraft"), 29, text, Typeface.BOLD);
+        TextView title = label(L10n.t(this, "session_aircraft"), 29, text, Typeface.BOLD);
         title.setPadding(0, dp(18), 0, 0); root.addView(title);
-        TextView subtitle = label(L10n.t(this, "military_in_radius"),
+        TextView subtitle = label(L10n.t(this, "since_app_start"),
                 11, GREEN, Typeface.BOLD); subtitle.setLetterSpacing(0.1f); root.addView(subtitle);
         contacts = new LinearLayout(this); contacts.setOrientation(LinearLayout.VERTICAL);
         contacts.setPadding(0, dp(18), 0, 0); root.addView(contacts);
@@ -56,7 +61,8 @@ public class AircraftListActivity extends Activity {
     }
 
     private void updateList() {
-        String json = AppPreferences.get(this).getString(AppPreferences.KEY_AIRCRAFT_JSON, "[]");
+        String json = AppPreferences.get(this).getString(
+                AppPreferences.KEY_AIRCRAFT_HISTORY_JSON, "[]");
         if (json.equals(lastJson)) return; lastJson = json; contacts.removeAllViews();
         try {
             JSONArray array = new JSONArray(json);
@@ -77,9 +83,19 @@ public class AircraftListActivity extends Activity {
         card.addView(label(type + "  •  " + reg, 12, muted, Typeface.BOLD));
         double distance = plane.optDouble("distance_km", Double.NaN);
         double altitude = plane.optDouble("altitude_ft", Double.NaN);
-        TextView metrics = label(AppPreferences.distance(this, distance) + "   //   "
-                + AppPreferences.altitude(this, altitude), 15, text, Typeface.BOLD);
+        boolean inRange = plane.optBoolean("in_range", false);
+        String state = inRange ? AppPreferences.distance(this, distance)
+                : L10n.t(this, "out_of_range");
+        TextView metrics = label(state + "   //   "
+                + AppPreferences.altitude(this, altitude), 15,
+                inRange ? text : RED, Typeface.BOLD);
         metrics.setPadding(0, dp(10), 0, 0); card.addView(metrics);
+        long firstSeen = plane.optLong("first_seen_ms", 0L);
+        long lastSeen = plane.optLong("last_seen_ms", 0L);
+        TextView time = label(L10n.t(this, "in_range_time") + "  "
+                + formatTime(firstSeen) + " – " + formatTime(lastSeen),
+                12, muted, Typeface.NORMAL);
+        time.setPadding(0, dp(7), 0, 0); card.addView(time);
         card.setOnClickListener(v -> startActivity(new Intent(this, AircraftDetailActivity.class)
                 .putExtra("aircraft", plane.toString())));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
@@ -90,6 +106,11 @@ public class AircraftListActivity extends Activity {
 
     @Override protected void onResume() { super.onResume(); handler.post(refresh); }
     @Override protected void onPause() { handler.removeCallbacks(refresh); super.onPause(); }
+
+    private String formatTime(long timestamp) {
+        if (timestamp <= 0) return "—";
+        return new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date(timestamp));
+    }
 
     private LinearLayout card() {
         LinearLayout v = new LinearLayout(this); v.setPadding(dp(18), dp(16), dp(18), dp(16));

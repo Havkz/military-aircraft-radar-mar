@@ -14,12 +14,15 @@ import android.widget.TextView;
 
 import org.json.JSONObject;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Locale;
 
 public class AircraftDetailActivity extends Activity {
     private static final int GREEN = Color.rgb(79, 138, 101);
     private static final int BLUE = Color.rgb(82, 122, 163);
     private static final int ORANGE = Color.rgb(217, 130, 69);
+    private static final int RED = Color.rgb(211, 75, 75);
     private boolean dark;
     private int background, surface, text, muted;
     private JSONObject aircraft;
@@ -58,10 +61,19 @@ public class AircraftDetailActivity extends Activity {
 
         LinearLayout grid = new LinearLayout(this); grid.setOrientation(LinearLayout.VERTICAL);
         grid.setPadding(0, dp(18), 0, 0); root.addView(grid);
-        row(grid, L10n.t(this, "distance"),
-                AppPreferences.distance(this, aircraft.optDouble("distance_km", Double.NaN)));
+        boolean inRange = aircraft.optBoolean("in_range", false);
+        row(grid, L10n.t(this, "status"),
+                L10n.t(this, inRange ? "in_range" : "out_of_range"),
+                inRange ? GREEN : RED);
+        row(grid, L10n.t(this, "distance"), inRange
+                ? AppPreferences.distance(this, aircraft.optDouble("distance_km", Double.NaN))
+                : L10n.t(this, "out_of_range"), inRange ? text : RED);
         row(grid, L10n.t(this, "altitude"),
                 AppPreferences.altitude(this, aircraft.optDouble("altitude_ft", Double.NaN)));
+        row(grid, L10n.t(this, "first_in_range"),
+                formatTime(aircraft.optLong("first_seen_ms", 0L)));
+        row(grid, L10n.t(this, "last_in_range"),
+                formatTime(aircraft.optLong("last_seen_ms", 0L)));
         row(grid, L10n.t(this, "ground_speed"),
                 String.format(Locale.US, "%.0f kt", aircraft.optDouble("speed_knots", 0)));
         row(grid, L10n.t(this, "track"),
@@ -71,7 +83,7 @@ public class AircraftDetailActivity extends Activity {
                 String.format(Locale.US, "%.1f s", aircraft.optDouble("seen", 0)));
         row(grid, L10n.t(this, "position"), String.format(Locale.US, "%.5f, %.5f",
                 aircraft.optDouble("lat", 0), aircraft.optDouble("lon", 0)));
-        row(grid, L10n.t(this, "status"), aircraft.optString("emergency", "none"));
+        row(grid, "Emergency", aircraft.optString("emergency", "none"));
 
         Button tracker = neonButton(L10n.t(this, "open_in") + TrackerLinks.selectedName(this).toUpperCase(Locale.ROOT));
         tracker.setOnClickListener(v -> openTracker());
@@ -82,9 +94,13 @@ public class AircraftDetailActivity extends Activity {
     }
 
     private void row(LinearLayout root, String name, String value) {
+        row(root, name, value, text);
+    }
+
+    private void row(LinearLayout root, String name, String value, int valueColor) {
         LinearLayout row = card(); row.setOrientation(LinearLayout.HORIZONTAL);
         row.addView(label(name, 13, muted, Typeface.BOLD), new LinearLayout.LayoutParams(0, -2, 1f));
-        row.addView(label(value, 14, text, Typeface.BOLD));
+        row.addView(label(value, 14, valueColor, Typeface.BOLD));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.setMargins(0, 0, 0, dp(8)); root.addView(row, params);
     }
@@ -94,6 +110,11 @@ public class AircraftDetailActivity extends Activity {
         String hex = aircraft.optString("hex", "");
         double lat = aircraft.optDouble("lat", Double.NaN), lon = aircraft.optDouble("lon", Double.NaN);
         startActivity(TrackerLinks.selectedIntent(this, callsign, hex, lat, lon));
+    }
+
+    private String formatTime(long timestamp) {
+        if (timestamp <= 0) return "—";
+        return new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date(timestamp));
     }
 
     private LinearLayout card() { LinearLayout v = new LinearLayout(this); v.setPadding(dp(17), dp(15), dp(17), dp(15));
