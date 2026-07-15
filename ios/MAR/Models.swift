@@ -25,14 +25,27 @@ struct Aircraft: Identifiable, Hashable {
         registration = json["r"] as? String ?? ""
         type = json["t"] as? String ?? ""
         distanceKm = distanceNm * 1.852
-        if let number = json["alt_baro"] as? NSNumber { altitudeFt = number.doubleValue }
-        else if (json["alt_baro"] as? String) == "ground" { altitudeFt = 0 }
-        else { altitudeFt = nil }
+        altitudeFt = Self.altitudeFeet(
+            barometric: json["alt_baro"], geometric: json["alt_geom"])
         speedKnots = (json["gs"] as? NSNumber)?.doubleValue ?? 0
         track = (json["track"] as? NSNumber)?.doubleValue ?? 0
         squawk = json["squawk"] as? String ?? "—"
         self.latitude = latitude
         self.longitude = longitude
         seen = (json["seen"] as? NSNumber)?.doubleValue ?? 0
+    }
+
+    private static func altitudeFeet(barometric: Any?, geometric: Any?) -> Double? {
+        if let feet = altitudeValueFeet(barometric) { return feet }
+        return altitudeValueFeet(geometric)
+    }
+
+    private static func altitudeValueFeet(_ value: Any?) -> Double? {
+        if let number = value as? NSNumber {
+            let feet = number.doubleValue
+            return feet.isFinite ? feet : nil
+        }
+        if let text = value as? String, text.lowercased() == "ground" { return 0 }
+        return nil
     }
 }

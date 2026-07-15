@@ -229,7 +229,8 @@ public class MonitorService extends Service implements LocationListener {
 
                     String hex = plane.optString("hex", "unknown").replace("~", "");
                     String callsign = plane.optString("flight", "").trim();
-                    double altitudeFt = altitudeFeet(plane.opt("alt_baro"));
+                    double altitudeFt = altitudeFeet(
+                            plane.opt("alt_baro"), plane.opt("alt_geom"));
                     militaryCount++;
                     currentlyInside.add(hex);
                     JSONObject compact = compactAircraft(plane, hex, callsign,
@@ -402,9 +403,16 @@ public class MonitorService extends Service implements LocationListener {
         getSystemService(NotificationManager.class).notify(notificationId, notification);
     }
 
-    private double altitudeFeet(Object value) {
+    static double altitudeFeet(Object barometricValue, Object geometricValue) {
+        double barometricFeet = altitudeValueFeet(barometricValue);
+        if (!Double.isNaN(barometricFeet)) return barometricFeet;
+        return altitudeValueFeet(geometricValue);
+    }
+
+    private static double altitudeValueFeet(Object value) {
         if (value instanceof Number) {
-            return ((Number) value).doubleValue();
+            double feet = ((Number) value).doubleValue();
+            return Double.isInfinite(feet) ? Double.NaN : feet;
         }
         if (value instanceof String && "ground".equalsIgnoreCase((String) value)) return 0;
         return Double.NaN;
