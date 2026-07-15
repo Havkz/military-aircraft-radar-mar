@@ -1,12 +1,6 @@
 name: Build unsigned iOS IPA
 
 on:
-  push:
-    branches:
-      - agent/public-repository-readiness
-    paths:
-      - ios/**
-      - .github/workflows/ios-unsigned-release.yml
   workflow_dispatch:
     inputs:
       release_tag:

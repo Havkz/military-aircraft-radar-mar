@@ -11,16 +11,27 @@ Thanks for helping improve Military Aircraft Radar.
 
 ## Development setup
 
+### Android
+
 1. Use JDK 17 and a current Android Studio release.
 2. Install Android SDK 35.
 3. Fork and clone the repository.
 4. Create a focused branch from `main`.
 5. Build and test on Android 8.0 or newer.
 
+### iOS
+
+1. Use a current macOS and Xcode release.
+2. Install XcodeGen with `brew install xcodegen`.
+3. Run `xcodegen generate` inside `ios/`.
+4. Open `ios/MAR.xcodeproj` and build for iOS 16 or newer.
+
+Physical-device installation requires an Apple signing identity and an appropriate provisioning profile. Never commit Apple signing material.
+
 ## Pull requests
 
 - Keep each pull request focused on one change.
-- Explain the user-visible impact and how the change was tested.
+- Explain the user-visible impact, affected platform, and how the change was tested.
 - Do not commit APKs, keystores, credentials, local configuration, or generated build directories.
 - Preserve the app's privacy model: no analytics, advertising, or unrelated tracking dependencies.
 - Update the README or privacy documentation when behavior or data handling changes.

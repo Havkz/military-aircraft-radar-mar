@@ -121,9 +121,19 @@ struct SettingsScreen: View {
     var body: some View {
         Form {
             Section(T.text("language", language)) { Picker(T.text("language", language), selection: $language) { ForEach(MARLanguage.allCases) { Text($0.name).tag($0.rawValue) } } }
-            Section(T.text("tracker", language)) { Picker(T.text("tracker", language), selection: $tracker) { Text("Flightradar24").tag("flightradar"); Text("ADS-B Exchange").tag("adsbexchange") } }
+            Section(T.text("tracker", language)) {
+                Picker(T.text("tracker", language), selection: $tracker) { Text("Flightradar24").tag("flightradar"); Text("ADS-B Exchange").tag("adsbexchange") }
+                Text(T.text("trackerNote", language)).font(.footnote).foregroundStyle(.secondary)
+            }
             Section("LIVE") { Picker("Refresh", selection: $refresh) { Text("10 s").tag(10.0); Text("30 s").tag(30.0); Text("60 s").tag(60.0) } }
             Section("INFO") { Text("Military Aircraft Radar – MAR\niOS 4.0\nADSB.lol") }
+            Section(T.text("legal", language)) {
+                Text("Contains information from ADSB.lol, which is made available under the Open Database License (ODbL) 1.0.").font(.footnote)
+                Text("Flightradar24 and ADS-B Exchange are independent external services. MAR is not affiliated with or endorsed by them and does not retrieve or redistribute their data.").font(.footnote).foregroundStyle(.secondary)
+                Link("ADSB.lol API / ODbL 1.0", destination: URL(string: "https://www.adsb.lol/docs/open-data/api/")!)
+                Link("Flightradar24 Terms", destination: URL(string: "https://www.flightradar24.com/terms-of-service")!)
+                Link("ADS-B Exchange Terms", destination: URL(string: "https://www.jetnet.com/legal/terms-of-use")!)
+            }
         }.scrollContentBackground(.hidden).background(.black).navigationTitle(T.text("settings", language)).tint(green)
     }
 }

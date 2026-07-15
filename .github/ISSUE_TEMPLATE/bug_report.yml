@@ -11,13 +11,23 @@ body:
     id: version
     attributes:
       label: MAR version
-      placeholder: 3.4
+      placeholder: 4.1 beta
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Android
+        - iPhone or iPad
     validations:
       required: true
   - type: input
-    id: android
+    id: device
     attributes:
-      label: Android version and device
+      label: Operating system version and device
+      placeholder: Android 15 on Pixel 8, or iOS 18 on iPhone 15
     validations:
       required: true
   - type: textarea

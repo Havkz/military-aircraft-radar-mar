@@ -1,101 +1,187 @@
 # Military Aircraft Radar (MAR)
 
-[![Android](https://img.shields.io/badge/Android-8.0%2B-4F8A65?logo=android&logoColor=white)](https://developer.android.com/about/versions/oreo)
-[![License: MIT](https://img.shields.io/badge/License-MIT-527AA3.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-4.1--beta-D98245)](app/build.gradle)
+[![Latest release](https://img.shields.io/github/v/release/Havkz/military-aircraft-radar-mar?include_prereleases&label=release)](https://github.com/Havkz/military-aircraft-radar-mar/releases)
+[![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-4F8A65?logo=android&logoColor=white)](https://developer.android.com/about/versions/oreo)
+[![iOS 16+](https://img.shields.io/badge/iOS-16%2B-527AA3?logo=apple&logoColor=white)](ios/README.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-D98245.svg)](LICENSE)
 
-Military Aircraft Radar is a native Android and iOS project that monitors nearby ADS-B traffic and alerts you when an aircraft marked as military enters the selected radius. It uses a restrained OLED-friendly interface, live telemetry, and direct links to external flight trackers.
+Military Aircraft Radar is an open-source mobile app that shows nearby aircraft identified as military by its live ADS-B data provider. It can notify you when a matching aircraft enters your selected radius and can open that aircraft in an external flight tracker.
+
+No account, API key, subscription, advertising SDK, or analytics SDK is required.
 
 > [!IMPORTANT]
-> MAR is an independent hobby project. It is not affiliated with ADSB.lol, Flightradar24, ADS-B Exchange, any armed forces, or any government organization. Do not use it for safety-critical, operational, or navigational decisions.
+> MAR is an independent hobby project. It is not affiliated with ADSB.lol, Flightradar24, ADS-B Exchange, any armed forces, or any government organization. Do not use MAR for navigation, safety-critical decisions, or operational purposes.
 
-## Features
+## Get started
 
-- Queries ADSB.lol's dedicated military feed, computes local distance from live coordinates, and falls back to the local military-flag query if needed
-- Adjustable monitoring radius from 10 to 300 km with a one-tap recommended 25 km preset
-- Refresh intervals of 10, 30, or 60 seconds
-- Individual aircraft notifications that continuously refresh distance and altitude while the contact remains in range
-- Marks a tracked notification as out of range when the contact leaves the radius or disappears from a successful ADSB.lol scan
-- Suppresses a dismissed aircraft notification for five minutes and only shows it again while the contact is inside the current radius
-- Session history containing every military aircraft seen since the app process started, including first and last in-range times
-- Opens notification targets at the aircraft position in Flightradar24 or by ICAO address in the installed ADS-B Exchange web app, with browser fallbacks
-- Live aircraft list with animated detail views
-- Minimal semantic color system with mostly neutral typography, saturated state accents, and official Material Symbols navigation icons
-- Fixed footer and in-place animated radar/history/settings pages with horizontal swipe navigation
-- System-bar and display-cutout insets keep controls clear of status and navigation areas
+### Android: install the app
+
+No programming tools are required to install the Android release.
+
+1. Open the [Releases page](https://github.com/Havkz/military-aircraft-radar-mar/releases).
+2. Open the newest release and expand **Assets** if the files are hidden.
+3. Download the file whose name begins with `MAR-Android` and ends with `.apk`.
+4. Open the downloaded APK. Android may ask you to allow installations from your browser or file manager. This permission can be disabled again after installation.
+5. Open MAR and grant location and notification permissions when requested.
+6. Select a monitoring radius and press **Start monitoring**.
+
+Android may display a warning because the APK is installed outside Google Play. Only install files downloaded from this repository's official Releases page. Advanced users can verify release checksums before installation.
+
+### iPhone and iPad
+
+The release may contain an unsigned `.ipa`, but it cannot be installed directly. Apple requires the app to be signed with an Apple identity and a provisioning profile that authorizes the receiving device.
+
+There is currently no one-tap public iOS installation. Users familiar with Apple sideloading can sign the IPA themselves; developers can build the native SwiftUI project on a Mac. See [the iOS guide](ios/README.md) for clear instructions and limitations.
+
+## First use
+
+1. Choose a radius. The slider marks **20–30 km** as a practical recommended range; the label follows the selected unit system.
+2. Press **Start monitoring**. The radar begins moving only after a live data connection is available.
+3. Keep the foreground-service notification enabled while monitoring is active.
+4. Open **Settings** to choose units, language, theme, refresh interval, vibration, and the tracker used when an aircraft notification is selected.
+5. ADS-B Exchange is recommended as the notification target because some aircraft may not be visible on Flightradar24.
+
+MAR stops monitoring and removes its notifications when its Android app task is closed. After a phone restart, MAR can remind you to start monitoring again; it does not silently restart continuous monitoring.
+
+## What notifications do
+
+- Each aircraft receives its own notification.
+- Distance and altitude are refreshed while the aircraft remains available in the live feed.
+- The notification changes to **Out of range** when the aircraft leaves the selected radius or disappears from a successful scan.
+- Dismissing a notification suppresses that aircraft for five minutes. It can return only if it is detected inside the active radius again.
+- Selecting a notification opens the configured external tracker. If its app or installed web app cannot handle the link, MAR uses the browser as a fallback.
+
+## Common questions
+
+### Does MAR detect every military aircraft?
+
+No. ADS-B and MLAT coverage is incomplete. Some aircraft do not transmit a usable position, may be outside receiver coverage, or may not be classified correctly by the upstream database. MAR includes military-tagged fixed-wing aircraft and helicopters when usable data is available, but complete detection cannot be guaranteed.
+
+### Is the displayed information truly live?
+
+MAR polls current data at the selected interval of 10, 30, or 60 seconds. “Live” therefore means regularly refreshed current data, not a continuous zero-delay stream.
+
+### Why is location permission required?
+
+The app needs the device position to calculate the distance between you and each aircraft. MAR does not operate a developer-controlled backend. See [Privacy](#privacy) for the exact data flow.
+
+### Why is there a persistent Android notification?
+
+Android requires a foreground-service notification while continuous location-based monitoring is active. Individual aircraft alerts are delivered separately.
+
+### Why is ADS-B Exchange recommended?
+
+Some aircraft may not be visible on Flightradar24. ADS-B Exchange can therefore be the more reliable external destination for a detected military contact. Tracker availability remains controlled by the external service.
+
+## Main features
+
+- Nearby military-contact monitoring using ADSB.lol live data
+- Adjustable 10–300 km radius with a marked 20–30 km recommendation
+- 10, 30, or 60 second refresh intervals
+- Continuously updated per-aircraft notifications
+- Five-minute notification-dismissal cooldown
+- Animated radar, aircraft history, and settings pages with swipe navigation
+- Session history with first and last in-range times
+- Animated aircraft detail views
+- Flightradar24 and ADS-B Exchange outbound tracker links with browser fallbacks
 - OLED dark, light, and system themes
-- English, Mandarin Chinese, Hindi, Spanish, French, Arabic, Bengali, Portuguese, Russian, and German, plus automatic system-language selection
-- Aviation units (NM / ft) or metric units (km / m)
-- Foreground monitoring service with reboot reminder
-- Stops monitoring and clears MAR notifications when the app task is closed
-- No account, API key, analytics SDK, or advertising SDK required
+- Aviation units (NM / ft) and metric units (km / m)
+- English, Mandarin Chinese, Hindi, Spanish, French, Arabic, Bengali, Portuguese, Russian, and German
+- Automatic system-language selection and right-to-left layout for Arabic
+- No account, analytics, advertising, or developer-operated backend
 
-## How it works
+## Technical overview
 
-1. Android provides the device's current location while monitoring is enabled.
-2. MAR requests nearby aircraft from the public ADSB.lol endpoint over HTTPS.
-3. The app uses ADSB.lol's military classification and computes each contact's distance locally; the military `dbFlags` bit remains the fallback filter.
-4. New aircraft entering the selected radius trigger an individual notification.
-5. Tapping an aircraft notification opens the tracker selected in Settings.
+### Data flow
 
-The Flightradar24 and ADS-B Exchange integrations are outbound tracker links only. MAR does not scrape either service. ADS-B Exchange currently distributes its Android experience as an installable web app rather than a native application; MAR detects that WebAPK dynamically.
+1. Android or iOS provides the device's current location while monitoring is active.
+2. MAR requests the ADSB.lol military feed over HTTPS.
+3. MAR calculates the distance to each returned aircraft locally from its coordinates.
+4. Contacts inside the configured radius update the radar, aircraft list, session history, and notifications.
+5. Tracker links are opened only when the user explicitly selects an aircraft or notification.
 
-## Requirements
+The primary Android request uses ADSB.lol's dedicated military endpoint. If that request fails, MAR falls back to the nearby-aircraft endpoint and applies the military `dbFlags` bit. Flightradar24 and ADS-B Exchange are external viewing destinations only; MAR does not scrape either service.
 
-- Android 8.0 (API 26) or newer
-- Internet connection
-- Location permission
-- Notification permission on Android 13 or newer
+### Accuracy limitations
 
-## Downloads
+Aircraft data may be missing, delayed, duplicated, or incorrect. Military classification is inherited from ADSB.lol and is not independently verified by MAR. Altitude, callsign, registration, type, and position fields may be absent. Android device manufacturers may also restrict background execution despite the foreground service.
 
-Android APKs and iOS build artifacts are published on the GitHub Releases page. The iOS IPA is an unsigned device build: it must be signed with the user's own Apple identity or a valid provisioning profile before an iPhone or iPad will install it. This does not require publishing MAR in the App Store.
+### Platform support
+
+| Platform | Minimum version | Monitoring behavior |
+| --- | --- | --- |
+| Android | Android 8.0 / API 26 | Foreground monitoring with a required persistent system notification |
+| iPhone and iPad | iOS 16 | Scans while the app is active; continuous Android-style background monitoring is not available |
+
+### Android permissions
+
+| Permission | Why MAR requests it |
+| --- | --- |
+| Internet | Retrieve live aircraft data and open tracker links |
+| Fine/coarse location | Calculate the distance from the device to aircraft |
+| Notifications | Display the required service status and aircraft alerts |
+| Foreground service/location | Keep active monitoring running under Android restrictions |
+| Vibration | Provide optional vibration for a newly detected contact |
+| Receive boot completed | Offer a reminder to restart monitoring after a reboot |
+
+MAR does not request access to contacts, camera, microphone, phone calls, or shared storage.
 
 ## Build from source
 
 ### Android
 
-1. Install a current Android Studio release with JDK 17.
-2. Install Android SDK 35 through the SDK Manager.
-3. Clone this repository and open its root directory in Android Studio.
-4. Allow Gradle to synchronize the project.
+1. Install a current [Android Studio](https://developer.android.com/studio) release with JDK 17.
+2. In Android Studio's SDK Manager, install Android SDK 35.
+3. Clone this repository:
+
+   ```bash
+   git clone https://github.com/Havkz/military-aircraft-radar-mar.git
+   cd military-aircraft-radar-mar
+   ```
+
+4. Open the repository root in Android Studio and allow Gradle to synchronize.
 5. Select **Build > Build APK(s)**.
 
 The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
-The project uses Android Gradle Plugin 8.7.3, `compileSdk 35`, `targetSdk 35`, and `minSdk 26`. Release builds must be signed with your own keystore. Never commit signing material to the repository.
+The Android project uses Android Gradle Plugin 8.7.3, `compileSdk 35`, `targetSdk 35`, and `minSdk 26`. Release builds must be signed with a private keystore. Never commit a keystore, password, token, provisioning profile, or other credential.
 
 ### iPhone and iPad
 
-The native SwiftUI port lives in [`ios/`](ios/). It requires macOS, Xcode, XcodeGen, and iOS 16 or newer. See [`ios/README.md`](ios/README.md) for build instructions and [`ios/RELEASE.md`](ios/RELEASE.md) for Apple signing requirements.
+The native SwiftUI project is stored in [`ios/`](ios/). Building it requires macOS, Xcode, XcodeGen, and an Apple signing identity for physical-device installation. Follow [ios/README.md](ios/README.md); release signing details are documented in [ios/RELEASE.md](ios/RELEASE.md).
 
-iOS stops live scanning when the app is no longer active because Apple does not provide an Android-style indefinite foreground service for this use case.
+### Repository layout
 
-## Permissions
-
-| Permission | Purpose |
-| --- | --- |
-| Internet | Retrieve live ADS-B aircraft data and open tracker links |
-| Fine/coarse location | Center the selected monitoring radius on the device |
-| Notifications | Display the foreground-service indicator and aircraft alerts |
-| Foreground service/location | Keep active monitoring running under Android restrictions |
-| Vibration | Optional vibration for new aircraft alerts |
-| Receive boot completed | Remind the user to restart monitoring after a reboot |
+```text
+app/                 Android application source and resources
+ios/                 Native SwiftUI iPhone/iPad project
+.github/             Issue forms, pull request template, and workflows
+PRIVACY.md           Detailed data-handling notice
+LEGAL.md             Provider terms, attribution, and trademark notice
+SECURITY.md          Private vulnerability-reporting instructions
+CONTRIBUTING.md      Development and contribution guide
+```
 
 ## Privacy
 
-MAR has no developer-operated backend and includes no analytics or advertising libraries. While monitoring is active, the device location and selected radius are sent to ADSB.lol as part of the nearby-aircraft request. Aircraft telemetry and app preferences are stored locally on the device.
+MAR contains no analytics, advertising, crash-reporting, or user-account SDKs. It has no developer-operated server. While monitoring is active, location-related request data is sent directly from the device to ADSB.lol. Selecting an external tracker transfers aircraft or map-position information to that service.
 
-Read [PRIVACY.md](PRIVACY.md) before using or distributing the app. External services have their own privacy policies and terms.
+Read the complete [privacy notice](PRIVACY.md) before using or redistributing the app. ADSB.lol, Flightradar24, ADS-B Exchange, Apple, Google, and device manufacturers operate under their own terms and privacy policies.
 
-## Accuracy and limitations
+## Legal and data-source notices
 
-ADS-B and MLAT coverage is incomplete. Aircraft may be missing, delayed, incorrectly classified, or operating without a visible transponder. The military classification is inherited from upstream data and is not independently verified by MAR. Android may also stop background work when aggressive battery optimization is enabled.
+MAR contains information from [ADSB.lol](https://www.adsb.lol/), which is made available under the [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/). The app includes this attribution in Settings under **Legal & Data Sources**.
 
-## Contributing and security
+Flightradar24 and ADS-B Exchange are optional external destinations only. MAR does not retrieve, scrape, embed, or redistribute their data and does not use their logos. Their names and trademarks belong to their respective owners; no affiliation or endorsement is claimed.
 
-Bug reports and focused pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before contributing. Please report security issues privately as described in [SECURITY.md](SECURITY.md).
+Read [LEGAL.md](LEGAL.md) for the provider-by-provider review, official terms, and conditions that forks or future integrations must preserve.
 
-## License
+## Contributing and support
 
-Released under the [MIT License](LICENSE). Embedded Google Material Symbols are covered separately as documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Bug reports and focused contributions are welcome. Search existing issues first, remove precise locations and personal information from screenshots or logs, and follow [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Security vulnerabilities must not be posted publicly. Follow [SECURITY.md](SECURITY.md) to use GitHub's private vulnerability-reporting form.
+
+## License and third-party software
+
+MAR is released under the [MIT License](LICENSE). Embedded Google Material Symbols are licensed separately under Apache 2.0; details are available in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
