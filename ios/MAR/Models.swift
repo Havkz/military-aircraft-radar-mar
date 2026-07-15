@@ -14,17 +14,19 @@ struct Aircraft: Identifiable, Hashable {
     let longitude: Double
     let seen: Double
 
-    init?(json: [String: Any]) {
+    init?(json: [String: Any], userLatitude: Double, userLongitude: Double) {
         guard let hex = json["hex"] as? String,
               MilitaryClassifier.isMilitary(json),
-              let distanceNm = (json["dst"] as? NSNumber)?.doubleValue,
               let latitude = (json["lat"] as? NSNumber)?.doubleValue,
-              let longitude = (json["lon"] as? NSNumber)?.doubleValue else { return nil }
+              let longitude = (json["lon"] as? NSNumber)?.doubleValue,
+              let calculatedDistance = Self.distanceKm(
+                fromLatitude: userLatitude, longitude: userLongitude,
+                toLatitude: latitude, longitude: longitude) else { return nil }
         id = hex.replacingOccurrences(of: "~", with: "")
         callsign = (json["flight"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
         registration = json["r"] as? String ?? ""
         type = json["t"] as? String ?? ""
-        distanceKm = distanceNm * 1.852
+        distanceKm = calculatedDistance
         altitudeFt = Self.altitudeFeet(
             geometric: json["alt_geom"], barometric: json["alt_baro"])
         speedKnots = (json["gs"] as? NSNumber)?.doubleValue ?? 0
@@ -47,5 +49,28 @@ struct Aircraft: Identifiable, Hashable {
         }
         if let text = value as? String, text.lowercased() == "ground" { return 0 }
         return nil
+    }
+
+    private static func distanceKm(fromLatitude userLatitude: Double,
+                                   longitude userLongitude: Double,
+                                   toLatitude aircraftLatitude: Double,
+                                   longitude aircraftLongitude: Double) -> Double? {
+        guard userLatitude.isFinite, userLongitude.isFinite,
+              aircraftLatitude.isFinite, aircraftLongitude.isFinite,
+              (-90...90).contains(userLatitude), (-90...90).contains(aircraftLatitude),
+              (-180...180).contains(userLongitude),
+              (-180...180).contains(aircraftLongitude) else { return nil }
+
+        let earthRadiusKm = 6371.0088
+        let latitudeDelta = (aircraftLatitude - userLatitude) * .pi / 180
+        let longitudeDelta = (aircraftLongitude - userLongitude) * .pi / 180
+        let userLatitudeRadians = userLatitude * .pi / 180
+        let aircraftLatitudeRadians = aircraftLatitude * .pi / 180
+        let haversine = pow(sin(latitudeDelta / 2), 2)
+            + cos(userLatitudeRadians) * cos(aircraftLatitudeRadians)
+            * pow(sin(longitudeDelta / 2), 2)
+        let boundedHaversine = min(1, max(0, haversine))
+        return earthRadiusKm * 2 * atan2(
+            sqrt(boundedHaversine), sqrt(1 - boundedHaversine))
     }
 }

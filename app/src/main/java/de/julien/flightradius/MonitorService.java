@@ -220,11 +220,8 @@ public class MonitorService extends Service implements LocationListener {
                     if (!MilitaryClassifier.isMilitary(plane)) continue;
                     double aircraftLat = plane.optDouble("lat", Double.NaN);
                     double aircraftLon = plane.optDouble("lon", Double.NaN);
-                    if (Double.isNaN(aircraftLat) || Double.isNaN(aircraftLon)) continue;
-                    float[] distanceMeters = new float[1];
-                    Location.distanceBetween(own.getLatitude(), own.getLongitude(),
-                            aircraftLat, aircraftLon, distanceMeters);
-                    double distanceKm = distanceMeters[0] / 1000d;
+                    double distanceKm = DistanceCalculator.kilometers(
+                            own.getLatitude(), own.getLongitude(), aircraftLat, aircraftLon);
                     if (Double.isNaN(distanceKm) || distanceKm > radiusKm) continue;
 
                     String hex = plane.optString("hex", "unknown").replace("~", "");

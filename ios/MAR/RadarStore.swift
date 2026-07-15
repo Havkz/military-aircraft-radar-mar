@@ -69,7 +69,12 @@ final class RadarStore: NSObject, ObservableObject, CLLocationManagerDelegate {
                 guard (response as? HTTPURLResponse)?.statusCode == 200,
                       let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let rows = root["ac"] as? [[String: Any]] else { throw URLError(.badServerResponse) }
-                let current = rows.compactMap(Aircraft.init).filter { $0.distanceKm <= radiusKm }.sorted { $0.distanceKm < $1.distanceKm }
+                let current = rows.compactMap {
+                    Aircraft(json: $0,
+                             userLatitude: location.coordinate.latitude,
+                             userLongitude: location.coordinate.longitude)
+                }.filter { $0.distanceKm <= radiusKm }
+                    .sorted { $0.distanceKm < $1.distanceKm }
                 aircraft = current
                 connection = "Live"
                 lastScan = Date()
