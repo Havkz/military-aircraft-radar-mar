@@ -157,6 +157,7 @@ public class MonitorService extends Service implements LocationListener {
                 .putBoolean(AppPreferences.KEY_RUNNING, false)
                 .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
                 .putString(AppPreferences.KEY_CONNECTION, "standby").apply();
+        AppPreferences.clearLiveTelemetry(this);
         if (locationManager != null) locationManager.removeUpdates(this);
         if (worker != null) worker.removeCallbacksAndMessages(null);
         if (workerThread != null) workerThread.quitSafely();

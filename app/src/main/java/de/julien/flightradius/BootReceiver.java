@@ -22,6 +22,7 @@ public class BootReceiver extends BroadcastReceiver {
                 .putBoolean(AppPreferences.KEY_RUNNING, false)
                 .putString(AppPreferences.KEY_CONNECTION, "standby")
                 .apply();
+        AppPreferences.clearLiveTelemetry(context);
         if (!wasRunning) return;
 
         NotificationManager manager = context.getSystemService(NotificationManager.class);

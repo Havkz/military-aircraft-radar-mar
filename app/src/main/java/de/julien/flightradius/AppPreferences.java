@@ -57,6 +57,21 @@ final class AppPreferences {
         return get(context).getInt(KEY_REFRESH_SECONDS, 10);
     }
 
+    static void clearLiveTelemetry(Context context) {
+        get(context).edit()
+                .putInt(KEY_LIVE_COUNT, 0)
+                .putLong(KEY_LAST_SCAN, 0L)
+                .putString(KEY_CONNECTION, "standby")
+                .putString(KEY_AIRCRAFT_JSON, "[]")
+                .putString(KEY_AIRCRAFT_HISTORY_JSON, "[]")
+                .putString(KEY_NEAREST_CALLSIGN, "")
+                .putLong(KEY_NEAREST_DISTANCE_KM,
+                        Double.doubleToRawLongBits(Double.NaN))
+                .putLong(KEY_NEAREST_ALTITUDE_FT,
+                        Double.doubleToRawLongBits(Double.NaN))
+                .apply();
+    }
+
     static String distance(Context context, double km) {
         if (Double.isNaN(km)) return "—";
         if (usesMetric(context)) return String.format(Locale.GERMANY, "%.1f km", km);
