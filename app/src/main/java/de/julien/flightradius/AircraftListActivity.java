@@ -79,7 +79,7 @@ public class AircraftListActivity extends Activity {
         LinearLayout card = card(); card.setOrientation(LinearLayout.VERTICAL);
         String callsign = plane.optString("callsign", "");
         TextView name = label(callsign.isEmpty() ? L10n.t(this, "no_callsign") : callsign,
-                21, BLUE, Typeface.BOLD); card.addView(name);
+                21, text, Typeface.BOLD); card.addView(name);
         String type = plane.optString("type", "—"); String reg = plane.optString("registration", "—");
         card.addView(label(type + "  •  " + reg, 12, muted, Typeface.BOLD));
         double distance = plane.optDouble("distance_km", Double.NaN);

@@ -16,9 +16,12 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -44,6 +47,15 @@ public class MainActivity extends Activity {
     private TextView connectionValue;
     private TextView lastScanValue;
     private TextView nearestValue;
+    private ProgressBar startupProgress;
+    private SwipePageHost pageHost;
+    private View radarPage;
+    private AircraftListPanel aircraftPanel;
+    private SettingsPanel settingsPanel;
+    private final ImageButton[] navigationButtons = new ImageButton[3];
+    private int currentPage;
+    private int restoredPage;
+    private boolean pageAnimating;
     private int background;
     private int surface;
     private int text;
@@ -64,6 +76,7 @@ public class MainActivity extends Activity {
         L10n.applyDirection(this);
         applyPalette();
         settingsSignature = signature();
+        restoredPage = savedInstanceState == null ? 0 : savedInstanceState.getInt("page", 0);
         buildUi();
     }
 
@@ -102,9 +115,10 @@ public class MainActivity extends Activity {
         TextView title = label(L10n.t(this, "app_title"), 28, text, Typeface.BOLD);
         title.setLetterSpacing(0.05f);
         names.addView(title);
-        Button settings = compactButton("⚙");
+        ImageButton settings = iconButton(R.drawable.ic_material_settings,
+                L10n.t(this, "settings"));
         settings.setContentDescription(L10n.t(this, "settings"));
-        settings.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
+        settings.setOnClickListener(v -> switchPage(2));
         top.addView(settings, new LinearLayout.LayoutParams(dp(54), dp(54)));
         root.addView(top);
 
@@ -122,6 +136,14 @@ public class MainActivity extends Activity {
         connectionValue = label("", 12, muted, Typeface.NORMAL);
         connectionValue.setPadding(0, dp(6), 0, 0);
         statusCard.addView(connectionValue);
+        startupProgress = new ProgressBar(this, null,
+                android.R.attr.progressBarStyleHorizontal);
+        startupProgress.setIndeterminate(true);
+        startupProgress.setIndeterminateTintList(ColorStateList.valueOf(GREEN));
+        startupProgress.setVisibility(View.GONE);
+        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(-1, dp(4));
+        progressParams.setMargins(0, dp(10), 0, 0);
+        statusCard.addView(startupProgress, progressParams);
         root.addView(statusCard, cardParams());
 
         LinearLayout liveGrid = new LinearLayout(this);
@@ -136,7 +158,7 @@ public class MainActivity extends Activity {
                 11, muted, Typeface.BOLD);
         nearestTitle.setLetterSpacing(0.1f);
         nearestCard.addView(nearestTitle);
-        nearestValue = label("—", 18, ORANGE, Typeface.BOLD);
+        nearestValue = label("—", 18, text, Typeface.BOLD);
         nearestValue.setPadding(0, dp(8), 0, 0);
         nearestCard.addView(nearestValue);
         root.addView(nearestCard, cardParams());
@@ -146,11 +168,11 @@ public class MainActivity extends Activity {
         TextView rangeTitle = label(L10n.t(this, "scan_radius"), 11, muted, Typeface.BOLD);
         rangeTitle.setLetterSpacing(0.12f);
         rangeCard.addView(rangeTitle);
-        radiusValue = label("", 27, BLUE, Typeface.BOLD);
+        radiusValue = label("", 27, text, Typeface.BOLD);
         radiusValue.setPadding(0, dp(6), 0, 0);
         rangeCard.addView(radiusValue);
-        SeekBar range = new SeekBar(this);
-        range.setMax(290);
+        RecommendedRangeControl rangeControl = new RecommendedRangeControl(this);
+        SeekBar range = rangeControl.seekBar();
         int radius = preferences.getInt(AppPreferences.KEY_RADIUS_KM, AppPreferences.DEFAULT_RADIUS_KM);
         range.setProgress(radius - 10);
         range.setProgressTintList(ColorStateList.valueOf(GREEN));
@@ -166,19 +188,7 @@ public class MainActivity extends Activity {
                 requestRadiusRefresh();
             }
         });
-        rangeCard.addView(range, new LinearLayout.LayoutParams(-1, -2));
-        Button recommended = secondaryButton("★  25 km");
-        recommended.setContentDescription(L10n.t(this, "recommended_distance") + ": 25 km");
-        recommended.setTextColor(GREEN);
-        recommended.setOnClickListener(v -> {
-            range.setProgress(15);
-            preferences.edit().putInt(AppPreferences.KEY_RADIUS_KM, 25).apply();
-            updateRadius(25);
-            requestRadiusRefresh();
-        });
-        LinearLayout.LayoutParams recommendedParams = new LinearLayout.LayoutParams(-1, dp(46));
-        recommendedParams.setMargins(0, dp(5), 0, 0);
-        rangeCard.addView(recommended, recommendedParams);
+        rangeCard.addView(rangeControl, new LinearLayout.LayoutParams(-1, dp(74)));
         root.addView(rangeCard, cardParams());
 
         toggle = neonButton("");
@@ -194,33 +204,8 @@ public class MainActivity extends Activity {
         });
         root.addView(battery, new LinearLayout.LayoutParams(-1, dp(52)));
 
-        LinearLayout navigation = new LinearLayout(this);
-        navigation.setGravity(Gravity.CENTER);
-        navigation.setPadding(0, dp(12), 0, 0);
-        Button radarNav = secondaryButton("◎");
-        radarNav.setTextSize(22);
-        radarNav.setContentDescription(L10n.t(this, "live_radar"));
-        radarNav.setTextColor(GREEN);
-        Button listNav = secondaryButton("✈");
-        listNav.setTextSize(21);
-        listNav.setContentDescription(L10n.t(this, "aircraft"));
-        listNav.setOnClickListener(v -> startActivity(new Intent(this, AircraftListActivity.class)));
-        Button settingsNav = secondaryButton("⚙");
-        settingsNav.setTextSize(21);
-        settingsNav.setContentDescription(L10n.t(this, "settings"));
-        settingsNav.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
-        navigation.addView(radarNav, navParams());
-        navigation.addView(listNav, navParams());
-        navigation.addView(settingsNav, navParams());
-        root.addView(navigation);
-
-        TextView footer = label("ADSB.LOL // FLIGHTRADAR24 // ADS-B EXCHANGE", 10, muted, Typeface.NORMAL);
-        footer.setGravity(Gravity.CENTER);
-        footer.setLetterSpacing(0.08f);
-        footer.setPadding(0, dp(18), 0, 0);
-        root.addView(footer);
-        setContentView(scroll);
-        SystemBars.apply(this, scroll, AppPreferences.isDark(this), background);
+        radarPage = scroll;
+        buildPageShell();
     }
 
     private TextView addMetric(LinearLayout parent, String title) {
@@ -230,13 +215,109 @@ public class MainActivity extends Activity {
         TextView heading = label(title, 10, muted, Typeface.BOLD);
         heading.setLetterSpacing(0.1f);
         box.addView(heading);
-        TextView value = label("—", 22, BLUE, Typeface.BOLD);
+        TextView value = label("—", 22, text, Typeface.BOLD);
         value.setPadding(0, dp(6), 0, 0);
         box.addView(value);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(100), 1f);
         params.setMargins(0, 0, dp(7), 0);
         parent.addView(box, params);
         return value;
+    }
+
+    private void buildPageShell() {
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        shell.setBackgroundColor(background);
+
+        pageHost = new SwipePageHost(this);
+        pageHost.setListener(direction -> switchPage(currentPage + direction));
+        shell.addView(pageHost, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        TextView footer = label("ADSB.LOL  •  FLIGHTRADAR24  •  ADS-B EXCHANGE",
+                9, muted, Typeface.NORMAL);
+        footer.setGravity(Gravity.CENTER);
+        footer.setLetterSpacing(0.06f);
+        footer.setPadding(dp(8), dp(5), dp(8), dp(5));
+        shell.addView(footer, new LinearLayout.LayoutParams(-1, dp(28)));
+
+        LinearLayout navigation = new LinearLayout(this);
+        navigation.setGravity(Gravity.CENTER);
+        navigation.setPadding(dp(14), dp(4), dp(14), dp(6));
+        navigationButtons[0] = navButton(R.drawable.ic_material_radar,
+                L10n.t(this, "live_radar"), 0);
+        navigationButtons[1] = navButton(R.drawable.ic_material_flight,
+                L10n.t(this, "aircraft"), 1);
+        navigationButtons[2] = navButton(R.drawable.ic_material_settings,
+                L10n.t(this, "settings"), 2);
+        for (ImageButton button : navigationButtons) navigation.addView(button, navParams());
+        shell.addView(navigation, new LinearLayout.LayoutParams(-1, dp(62)));
+
+        currentPage = Math.max(0, Math.min(2, restoredPage));
+        pageHost.addView(pageFor(currentPage), new ViewGroup.LayoutParams(-1, -1));
+        updateNavigation();
+        setContentView(shell);
+        SystemBars.apply(this, shell, AppPreferences.isDark(this), background);
+    }
+
+    private View pageFor(int page) {
+        if (page == 1) {
+            if (aircraftPanel == null) aircraftPanel = new AircraftListPanel(this);
+            return aircraftPanel;
+        }
+        if (page == 2) {
+            if (settingsPanel == null) settingsPanel = new SettingsPanel(this, this::recreate);
+            return settingsPanel;
+        }
+        return radarPage;
+    }
+
+    private void switchPage(int target) {
+        if (target < 0 || target > 2 || target == currentPage || pageAnimating) return;
+        final int from = currentPage;
+        final int direction = target > from ? 1 : -1;
+        final View previous = pageFor(from);
+        final View next = pageFor(target);
+        currentPage = target;
+        updateNavigation();
+        if (next.getParent() != null) ((ViewGroup) next.getParent()).removeView(next);
+        int distance = Math.max(pageHost.getWidth(), getResources().getDisplayMetrics().widthPixels);
+        next.setTranslationX(direction * distance);
+        next.setAlpha(0.82f);
+        pageHost.addView(next, new ViewGroup.LayoutParams(-1, -1));
+        pageAnimating = true;
+        previous.animate().translationX(-direction * distance * 0.22f).alpha(0f)
+                .setDuration(230).start();
+        next.animate().translationX(0f).alpha(1f).setDuration(260).withEndAction(() -> {
+            pageHost.removeView(previous);
+            previous.setTranslationX(0f);
+            previous.setAlpha(1f);
+            pageAnimating = false;
+            if (currentPage == 1 && aircraftPanel != null) aircraftPanel.refresh();
+        }).start();
+    }
+
+    private ImageButton navButton(int icon, String description, int page) {
+        ImageButton button = iconButton(icon, description);
+        button.setOnClickListener(view -> switchPage(page));
+        return button;
+    }
+
+    private void updateNavigation() {
+        for (int i = 0; i < navigationButtons.length; i++) {
+            ImageButton button = navigationButtons[i];
+            if (button == null) continue;
+            boolean selected = i == currentPage;
+            button.setImageTintList(ColorStateList.valueOf(selected ? GREEN : muted));
+            GradientDrawable backgroundDrawable = new GradientDrawable();
+            backgroundDrawable.setColor(selected
+                    ? (AppPreferences.isDark(this)
+                    ? MARColors.DARK_SELECTED : MARColors.LIGHT_SELECTED)
+                    : android.graphics.Color.TRANSPARENT);
+            backgroundDrawable.setCornerRadius(dp(16));
+            button.setBackground(backgroundDrawable);
+            button.animate().scaleX(selected ? 1.08f : 1f)
+                    .scaleY(selected ? 1.08f : 1f).setDuration(180).start();
+        }
     }
 
     private void toggleMonitoring() {
@@ -299,7 +380,16 @@ public class MainActivity extends Activity {
         super.onPause();
     }
 
+    @Override protected void onSaveInstanceState(Bundle state) {
+        state.putInt("page", currentPage);
+        super.onSaveInstanceState(state);
+    }
+
     @Override public void onBackPressed() {
+        if (currentPage != 0) {
+            switchPage(0);
+            return;
+        }
         preferences.edit()
                 .putBoolean(AppPreferences.KEY_RUNNING, false)
                 .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
@@ -326,10 +416,11 @@ public class MainActivity extends Activity {
         int count = preferences.getInt(AppPreferences.KEY_LIVE_COUNT, 0);
         countValue.setText(String.valueOf(count));
         String connection = preferences.getString(AppPreferences.KEY_CONNECTION, "standby");
-        if (!running) connectionValue.setText(L10n.t(this, "paused"));
-        else if ("connected".equals(connection)) connectionValue.setText(L10n.t(this, "connected"));
-        else if ("no_location".equals(connection)) connectionValue.setText(L10n.t(this, "waiting_location"));
-        else connectionValue.setText(L10n.t(this, "connecting"));
+        boolean loading = running && !"connected".equals(connection);
+        startupProgress.setVisibility(loading ? View.VISIBLE : View.GONE);
+        connectionValue.setVisibility(loading ? View.GONE : View.VISIBLE);
+        if (!loading) connectionValue.setText(running
+                ? L10n.t(this, "connected") : L10n.t(this, "paused"));
 
         long lastScan = preferences.getLong(AppPreferences.KEY_LAST_SCAN, 0L);
         lastScanValue.setText(lastScan == 0 ? "—" : new SimpleDateFormat("HH:mm:ss", Locale.getDefault())
@@ -344,6 +435,7 @@ public class MainActivity extends Activity {
             nearestValue.setText(callsign + "  •  " + AppPreferences.distance(this, distance)
                     + "  •  " + AppPreferences.altitude(this, altitude));
         }
+        if (currentPage == 1 && aircraftPanel != null) aircraftPanel.refresh();
     }
 
     private void updateRadius(int km) { radiusValue.setText(AppPreferences.distance(this, km)); }
@@ -382,11 +474,13 @@ public class MainActivity extends Activity {
         return view;
     }
 
-    private Button compactButton(String value) {
-        Button button = new Button(this);
-        button.setText(value);
-        button.setTextSize(23);
-        button.setTextColor(BLUE);
+    private ImageButton iconButton(int drawable, String description) {
+        ImageButton button = new ImageButton(this);
+        button.setImageResource(drawable);
+        button.setImageTintList(ColorStateList.valueOf(BLUE));
+        button.setContentDescription(description);
+        button.setPadding(dp(14), dp(14), dp(14), dp(14));
+        button.setScaleType(ImageButton.ScaleType.CENTER_INSIDE);
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(surface);
         bg.setCornerRadius(dp(17));

@@ -35,6 +35,7 @@ final class L10n {
             case "nearest": return v(c,"NEAREST MILITARY CONTACT","最近的军用目标","निकटतम सैन्य संपर्क","CONTACTO MILITAR MÁS CERCANO","CONTACT MILITAIRE LE PLUS PROCHE","أقرب طائرة عسكرية","নিকটতম সামরিক কন্টাক্ট","CONTATO MILITAR MAIS PRÓXIMO","БЛИЖАЙШИЙ ВОЕННЫЙ БОРТ","NÄCHSTER MILITÄRKONTAKT");
             case "scan_radius": return v(c,"SCAN RADIUS","扫描半径","स्कैन दायरा","RADIO DE ESCANEO","RAYON DE DÉTECTION","نطاق المسح","স্ক্যান ব্যাসার্ধ","RAIO DE VARREDURA","РАДИУС СКАНИРОВАНИЯ","SCAN-RADIUS");
             case "recommended_distance": return v(c,"RECOMMENDED DISTANCE","推荐距离","अनुशंसित दूरी","DISTANCIA RECOMENDADA","DISTANCE RECOMMANDÉE","المسافة الموصى بها","প্রস্তাবিত দূরত্ব","DISTÂNCIA RECOMENDADA","РЕКОМЕНДУЕМАЯ ДИСТАНЦИЯ","EMPFOHLENE REICHWEITE");
+            case "recommended_short": return v(c,"RECOMMENDED","推荐","अनुशंसित","RECOMENDADO","RECOMMANDÉ","موصى به","প্রস্তাবিত","RECOMENDADO","РЕКОМЕНДУЕТСЯ","EMPFOHLEN");
             case "battery": return v(c,"BATTERY OPTIMIZATION","电池优化","बैटरी अनुकूलन","OPTIMIZACIÓN DE BATERÍA","OPTIMISATION DE LA BATTERIE","تحسين البطارية","ব্যাটারি অপ্টিমাইজেশন","OTIMIZAÇÃO DE BATERIA","ОПТИМИЗАЦИЯ БАТАРЕИ","AKKUOPTIMIERUNG");
             case "not_available": return v(c,"Not available","不可用","उपलब्ध नहीं","No disponible","Non disponible","غير متاح","উপলভ্য নয়","Não disponível","Недоступно","Nicht verfügbar");
             case "aircraft": return v(c,"AIRCRAFT","飞机","विमान","AERONAVES","AÉRONEFS","الطائرات","বিমান","AERONAVES","САМОЛЁТЫ","FLUGZEUGE");

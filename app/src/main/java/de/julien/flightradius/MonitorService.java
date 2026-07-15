@@ -202,32 +202,19 @@ public class MonitorService extends Service implements LocationListener {
         }
 
         int radiusNm = Math.max(1, Math.min(250, (int) Math.ceil(radiusKm / 1.852)));
-        String endpoint = String.format(Locale.US,
+        String localEndpoint = String.format(Locale.US,
                 "https://api.adsb.lol/v2/lat/%.5f/lon/%.5f/dist/%d",
                 own.getLatitude(), own.getLongitude(), radiusNm);
 
-        HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(endpoint).openConnection();
-            connection.setConnectTimeout(10_000);
-            connection.setReadTimeout(15_000);
-            connection.setRequestProperty("User-Agent", "FlightRadiusMonitor/2.0");
-            connection.setRequestProperty("Accept", "application/json");
-
-            int code = connection.getResponseCode();
-            if (code != 200) {
-                updateStatus("NETWORK " + code, "", 0);
-                return;
+            JSONArray aircraft;
+            boolean militaryEndpoint = true;
+            try {
+                aircraft = fetchAircraft("https://api.adsb.lol/v2/mil");
+            } catch (Exception militaryFailure) {
+                militaryEndpoint = false;
+                aircraft = fetchAircraft(localEndpoint);
             }
-
-            StringBuilder json = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(connection.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) json.append(line);
-            }
-
-            JSONArray aircraft = new JSONObject(json.toString()).optJSONArray("ac");
             JSONArray liveAircraft = new JSONArray();
             Set<String> currentlyInside = new HashSet<>();
             long scanTime = System.currentTimeMillis();
@@ -238,9 +225,15 @@ public class MonitorService extends Service implements LocationListener {
             if (aircraft != null) {
                 for (int i = 0; i < aircraft.length(); i++) {
                     JSONObject plane = aircraft.optJSONObject(i);
-                    if (plane == null || (plane.optInt("dbFlags", 0) & MILITARY_FLAG) == 0) continue;
-                    double distanceNm = plane.optDouble("dst", Double.NaN);
-                    double distanceKm = distanceNm * 1.852;
+                    if (plane == null || (!militaryEndpoint
+                            && (plane.optInt("dbFlags", 0) & MILITARY_FLAG) == 0)) continue;
+                    double aircraftLat = plane.optDouble("lat", Double.NaN);
+                    double aircraftLon = plane.optDouble("lon", Double.NaN);
+                    if (Double.isNaN(aircraftLat) || Double.isNaN(aircraftLon)) continue;
+                    float[] distanceMeters = new float[1];
+                    Location.distanceBetween(own.getLatitude(), own.getLongitude(),
+                            aircraftLat, aircraftLon, distanceMeters);
+                    double distanceKm = distanceMeters[0] / 1000d;
                     if (Double.isNaN(distanceKm) || distanceKm > radiusKm) continue;
 
                     String hex = plane.optString("hex", "unknown").replace("~", "");
@@ -278,6 +271,27 @@ public class MonitorService extends Service implements LocationListener {
         } catch (Exception e) {
             AppPreferences.get(this).edit().putString(AppPreferences.KEY_CONNECTION, "error").apply();
             updateStatus("SIGNAL LOST", "", 0);
+        }
+    }
+
+    private JSONArray fetchAircraft(String endpoint) throws Exception {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(endpoint).openConnection();
+            connection.setConnectTimeout(10_000);
+            connection.setReadTimeout(15_000);
+            connection.setRequestProperty("User-Agent", "MilitaryAircraftRadar/4.1");
+            connection.setRequestProperty("Accept", "application/json");
+            int code = connection.getResponseCode();
+            if (code != 200) throw new IllegalStateException("ADSB.lol HTTP " + code);
+            StringBuilder json = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(connection.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) json.append(line);
+            }
+            JSONArray aircraft = new JSONObject(json.toString()).optJSONArray("ac");
+            return aircraft == null ? new JSONArray() : aircraft;
         } finally {
             if (connection != null) connection.disconnect();
         }

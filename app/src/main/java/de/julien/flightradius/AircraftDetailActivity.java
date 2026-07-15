@@ -53,10 +53,10 @@ public class AircraftDetailActivity extends Activity {
 
         String callsign = aircraft.optString("callsign", "");
         TextView title = label(callsign.isEmpty() ? L10n.t(this, "no_callsign") : callsign,
-                32, BLUE, Typeface.BOLD); title.setPadding(0, dp(12), 0, 0); root.addView(title);
+                32, text, Typeface.BOLD); title.setPadding(0, dp(12), 0, 0); root.addView(title);
         TextView id = label(aircraft.optString("type", "—") + "  //  "
                 + aircraft.optString("registration", "—") + "  //  "
-                + aircraft.optString("hex", "—").toUpperCase(Locale.ROOT), 12, ORANGE, Typeface.BOLD);
+                + aircraft.optString("hex", "—").toUpperCase(Locale.ROOT), 12, muted, Typeface.BOLD);
         id.setLetterSpacing(0.07f); root.addView(id);
 
         LinearLayout grid = new LinearLayout(this); grid.setOrientation(LinearLayout.VERTICAL);

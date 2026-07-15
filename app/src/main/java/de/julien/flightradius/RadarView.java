@@ -9,6 +9,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.Shader;
 import android.view.View;
+import android.view.animation.DecelerateInterpolator;
 import android.view.animation.LinearInterpolator;
 
 public class RadarView extends View {
@@ -17,7 +18,9 @@ public class RadarView extends View {
     private final Paint sweep = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint target = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final ValueAnimator animator;
+    private final ValueAnimator revealAnimator;
     private float angle;
+    private float reveal;
     private boolean scanning;
     private boolean attached;
     private boolean darkMode = true;
@@ -43,17 +46,25 @@ public class RadarView extends View {
             angle = (float) animation.getAnimatedValue();
             invalidate();
         });
+        revealAnimator = ValueAnimator.ofFloat(0f, 1f);
+        revealAnimator.setDuration(720);
+        revealAnimator.setInterpolator(new DecelerateInterpolator());
+        revealAnimator.addUpdateListener(animation -> {
+            reveal = (float) animation.getAnimatedValue();
+            invalidate();
+        });
     }
 
     @Override protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         attached = true;
-        if (scanning && getWindowVisibility() == View.VISIBLE) animator.start();
+        if (scanning && getWindowVisibility() == View.VISIBLE) startAnimations();
     }
 
     @Override protected void onDetachedFromWindow() {
         attached = false;
         animator.cancel();
+        revealAnimator.cancel();
         super.onDetachedFromWindow();
     }
 
@@ -62,6 +73,12 @@ public class RadarView extends View {
         float cx = getWidth() / 2f;
         float cy = getHeight() / 2f;
         float radius = Math.min(getWidth(), getHeight()) * 0.43f;
+
+        Path clip = new Path();
+        clip.addRoundRect(0, 0, getWidth(), getHeight(), dp(24), dp(24),
+                Path.Direction.CW);
+        int clipped = canvas.save();
+        canvas.clipPath(clip);
 
         Paint panel = new Paint(Paint.ANTI_ALIAS_FLAG);
         panel.setColor(darkMode ? MARColors.DARK_PANEL : MARColors.LIGHT_PANEL);
@@ -73,6 +90,10 @@ public class RadarView extends View {
         canvas.drawCircle(cx, cy, radius, glow);
 
         if (scanning) {
+            int revealed = canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(),
+                    Math.max(0, Math.min(255, (int) (255 * reveal))));
+            float scale = 0.86f + 0.14f * reveal;
+            canvas.scale(scale, scale, cx, cy);
             canvas.save();
             canvas.rotate(angle, cx, cy);
             sweep.setShader(new LinearGradient(cx, cy, cx + radius, cy,
@@ -90,17 +111,22 @@ public class RadarView extends View {
             pulse(canvas, cx - radius * 0.42f, cy - radius * 0.18f, 5f);
             pulse(canvas, cx + radius * 0.25f, cy + radius * 0.38f, 4f);
             pulse(canvas, cx + radius * 0.48f, cy - radius * 0.47f, 3f);
+            canvas.restoreToCount(revealed);
         }
+        canvas.restoreToCount(clipped);
     }
 
     public void setScanning(boolean active) {
         if (scanning == active) return;
         scanning = active;
-        if (active && attached && getWindowVisibility() == View.VISIBLE
-                && !animator.isStarted()) animator.start();
-        else if (!active) {
+        if (active) {
+            reveal = 0f;
+            if (attached && getWindowVisibility() == View.VISIBLE) startAnimations();
+        } else {
             animator.cancel();
+            revealAnimator.cancel();
             angle = 0f;
+            reveal = 0f;
         }
         invalidate();
     }
@@ -108,9 +134,10 @@ public class RadarView extends View {
     @Override protected void onWindowVisibilityChanged(int visibility) {
         super.onWindowVisibilityChanged(visibility);
         if (visibility == View.VISIBLE && scanning && attached && !animator.isStarted()) {
-            animator.start();
+            startAnimations();
         } else if (visibility != View.VISIBLE) {
             animator.cancel();
+            revealAnimator.cancel();
         }
     }
 
@@ -124,6 +151,11 @@ public class RadarView extends View {
         float wave = 0.7f + 0.3f * (float) Math.sin(Math.toRadians(angle * 2));
         target.setAlpha((int) (150 + 105 * wave));
         canvas.drawCircle(x, y, dp(size * wave), target);
+    }
+
+    private void startAnimations() {
+        if (!animator.isStarted()) animator.start();
+        if (reveal < 1f && !revealAnimator.isStarted()) revealAnimator.start();
     }
 
     private float dp(float value) {

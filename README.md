@@ -11,7 +11,7 @@ Military Aircraft Radar is a native Android and iOS project that monitors nearby
 
 ## Features
 
-- Filters nearby ADS-B records using the military flag supplied by ADSB.lol
+- Queries ADSB.lol's dedicated military feed, computes local distance from live coordinates, and falls back to the local military-flag query if needed
 - Adjustable monitoring radius from 10 to 300 km with a one-tap recommended 25 km preset
 - Refresh intervals of 10, 30, or 60 seconds
 - Individual aircraft notifications that continuously refresh distance and altitude while the contact remains in range
@@ -20,7 +20,8 @@ Military Aircraft Radar is a native Android and iOS project that monitors nearby
 - Session history containing every military aircraft seen since the app process started, including first and last in-range times
 - Opens notification targets at the aircraft position in Flightradar24 or by ICAO address in the installed ADS-B Exchange web app, with browser fallbacks
 - Live aircraft list with animated detail views
-- Minimal semantic color system with saturated accents, neutral surfaces, and icon-first navigation
+- Minimal semantic color system with mostly neutral typography, saturated state accents, and official Material Symbols navigation icons
+- Fixed footer and in-place animated radar/history/settings pages with horizontal swipe navigation
 - System-bar and display-cutout insets keep controls clear of status and navigation areas
 - OLED dark, light, and system themes
 - English, Mandarin Chinese, Hindi, Spanish, French, Arabic, Bengali, Portuguese, Russian, and German, plus automatic system-language selection
@@ -33,7 +34,7 @@ Military Aircraft Radar is a native Android and iOS project that monitors nearby
 
 1. Android provides the device's current location while monitoring is enabled.
 2. MAR requests nearby aircraft from the public ADSB.lol endpoint over HTTPS.
-3. The app keeps records whose `dbFlags` value contains the military bit.
+3. The app uses ADSB.lol's military classification and computes each contact's distance locally; the military `dbFlags` bit remains the fallback filter.
 4. New aircraft entering the selected radius trigger an individual notification.
 5. Tapping an aircraft notification opens the tracker selected in Settings.
 
@@ -97,4 +98,4 @@ Bug reports and focused pull requests are welcome. Read [CONTRIBUTING.md](CONTRI
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Released under the [MIT License](LICENSE). Embedded Google Material Symbols are covered separately as documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

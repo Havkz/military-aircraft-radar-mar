@@ -145,7 +145,7 @@ public class SettingsActivity extends Activity {
                 ? MARColors.DARK_BORDER : MARColors.LIGHT_BORDER);
         panel.setBackground(panelBackground);
 
-        TextView heading = label(title.toUpperCase(), 12, BLUE, Typeface.BOLD);
+        TextView heading = label(title.toUpperCase(), 12, text, Typeface.BOLD);
         heading.setLetterSpacing(0.1f);
         heading.setPadding(dp(4), 0, dp(4), dp(12));
         panel.addView(heading);
@@ -211,14 +211,14 @@ public class SettingsActivity extends Activity {
         TextView heading = label(title, 12, muted, Typeface.BOLD);
         heading.setLetterSpacing(0.04f);
         row.addView(heading, new LinearLayout.LayoutParams(-1, -2));
-        TextView value = label("", 15, BLUE, Typeface.BOLD);
+        TextView value = label("", 15, text, Typeface.BOLD);
         value.setPadding(0, dp(7), 0, 0);
         row.addView(value, new LinearLayout.LayoutParams(-1, -2));
         return row;
     }
 
     private void section(LinearLayout root, String title) {
-        TextView heading = label(title, 11, BLUE, Typeface.BOLD);
+        TextView heading = label(title, 11, muted, Typeface.BOLD);
         heading.setLetterSpacing(0.13f);
         heading.setPadding(dp(4), dp(24), 0, dp(10));
         root.addView(heading);
