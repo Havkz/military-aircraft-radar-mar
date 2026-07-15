@@ -26,7 +26,7 @@ struct Aircraft: Identifiable, Hashable {
         type = json["t"] as? String ?? ""
         distanceKm = distanceNm * 1.852
         altitudeFt = Self.altitudeFeet(
-            barometric: json["alt_baro"], geometric: json["alt_geom"])
+            geometric: json["alt_geom"], barometric: json["alt_baro"])
         speedKnots = (json["gs"] as? NSNumber)?.doubleValue ?? 0
         track = (json["track"] as? NSNumber)?.doubleValue ?? 0
         squawk = json["squawk"] as? String ?? "—"
@@ -35,9 +35,9 @@ struct Aircraft: Identifiable, Hashable {
         seen = (json["seen"] as? NSNumber)?.doubleValue ?? 0
     }
 
-    private static func altitudeFeet(barometric: Any?, geometric: Any?) -> Double? {
-        if let feet = altitudeValueFeet(barometric) { return feet }
-        return altitudeValueFeet(geometric)
+    private static func altitudeFeet(geometric: Any?, barometric: Any?) -> Double? {
+        if let feet = altitudeValueFeet(geometric) { return feet }
+        return altitudeValueFeet(barometric)
     }
 
     private static func altitudeValueFeet(_ value: Any?) -> Double? {

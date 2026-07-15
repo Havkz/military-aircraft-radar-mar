@@ -230,7 +230,7 @@ public class MonitorService extends Service implements LocationListener {
                     String hex = plane.optString("hex", "unknown").replace("~", "");
                     String callsign = plane.optString("flight", "").trim();
                     double altitudeFt = altitudeFeet(
-                            plane.opt("alt_baro"), plane.opt("alt_geom"));
+                            plane.opt("alt_geom"), plane.opt("alt_baro"));
                     militaryCount++;
                     currentlyInside.add(hex);
                     JSONObject compact = compactAircraft(plane, hex, callsign,
@@ -403,10 +403,10 @@ public class MonitorService extends Service implements LocationListener {
         getSystemService(NotificationManager.class).notify(notificationId, notification);
     }
 
-    static double altitudeFeet(Object barometricValue, Object geometricValue) {
-        double barometricFeet = altitudeValueFeet(barometricValue);
-        if (!Double.isNaN(barometricFeet)) return barometricFeet;
-        return altitudeValueFeet(geometricValue);
+    static double altitudeFeet(Object geometricValue, Object barometricValue) {
+        double geometricFeet = altitudeValueFeet(geometricValue);
+        if (!Double.isNaN(geometricFeet)) return geometricFeet;
+        return altitudeValueFeet(barometricValue);
     }
 
     private static double altitudeValueFeet(Object value) {
