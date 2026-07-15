@@ -44,7 +44,7 @@ final class AircraftListPanel extends ScrollView {
         TextView title = label(L10n.t(host, "session_aircraft"), 29, text, Typeface.BOLD);
         root.addView(title);
         TextView subtitle = label(L10n.t(host, "since_app_start"),
-                11, MARColors.GREEN, Typeface.BOLD);
+                11, muted, Typeface.BOLD);
         subtitle.setLetterSpacing(0.1f);
         subtitle.setPadding(0, dp(5), 0, 0);
         root.addView(subtitle);

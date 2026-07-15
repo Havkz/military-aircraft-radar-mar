@@ -90,6 +90,10 @@ public class RadarView extends View {
         canvas.drawCircle(cx, cy, radius, glow);
 
         if (scanning) {
+            Path radarClip = new Path();
+            radarClip.addCircle(cx, cy, radius - dp(2), Path.Direction.CW);
+            int sweepClip = canvas.save();
+            canvas.clipPath(radarClip);
             int revealed = canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(),
                     Math.max(0, Math.min(255, (int) (255 * reveal))));
             float scale = 0.86f + 0.14f * reveal;
@@ -101,17 +105,18 @@ public class RadarView extends View {
                     null, Shader.TileMode.CLAMP));
             Path beam = new Path();
             beam.moveTo(cx, cy);
-            beam.lineTo(cx + radius, cy - radius * 0.24f);
-            beam.lineTo(cx + radius, cy);
+            beam.lineTo(cx + radius * 0.96f, cy - radius * 0.12f);
+            beam.lineTo(cx + radius * 0.96f, cy);
             beam.close();
             canvas.drawPath(beam, sweep);
-            canvas.drawLine(cx, cy, cx + radius, cy, glow);
+            canvas.drawLine(cx, cy, cx + radius * 0.96f, cy, glow);
             canvas.restore();
 
             pulse(canvas, cx - radius * 0.42f, cy - radius * 0.18f, 5f);
             pulse(canvas, cx + radius * 0.25f, cy + radius * 0.38f, 4f);
             pulse(canvas, cx + radius * 0.48f, cy - radius * 0.47f, 3f);
             canvas.restoreToCount(revealed);
+            canvas.restoreToCount(sweepClip);
         }
         canvas.restoreToCount(clipped);
     }

@@ -8,6 +8,8 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.RenderEffect;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
@@ -18,6 +20,7 @@ import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.PathInterpolator;
 import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
@@ -109,7 +112,7 @@ public class MainActivity extends Activity {
         LinearLayout names = new LinearLayout(this);
         names.setOrientation(LinearLayout.VERTICAL);
         top.addView(names, new LinearLayout.LayoutParams(0, -2, 1f));
-        TextView eyebrow = label(L10n.t(this, "live_radar"), 11, GREEN, Typeface.BOLD);
+        TextView eyebrow = label(L10n.t(this, "live_radar"), 11, muted, Typeface.BOLD);
         eyebrow.setLetterSpacing(0.16f);
         names.addView(eyebrow);
         TextView title = label(L10n.t(this, "app_title"), 28, text, Typeface.BOLD);
@@ -175,8 +178,8 @@ public class MainActivity extends Activity {
         SeekBar range = rangeControl.seekBar();
         int radius = preferences.getInt(AppPreferences.KEY_RADIUS_KM, AppPreferences.DEFAULT_RADIUS_KM);
         range.setProgress(radius - 10);
-        range.setProgressTintList(ColorStateList.valueOf(GREEN));
-        range.setThumbTintList(ColorStateList.valueOf(ORANGE));
+        range.setProgressTintList(ColorStateList.valueOf(muted));
+        range.setThumbTintList(ColorStateList.valueOf(text));
         updateRadius(radius);
         range.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
@@ -281,19 +284,32 @@ public class MainActivity extends Activity {
         updateNavigation();
         if (next.getParent() != null) ((ViewGroup) next.getParent()).removeView(next);
         int distance = Math.max(pageHost.getWidth(), getResources().getDisplayMetrics().widthPixels);
-        next.setTranslationX(direction * distance);
-        next.setAlpha(0.82f);
+        next.setTranslationX(direction * distance * 0.86f);
+        next.setAlpha(0.72f);
         pageHost.addView(next, new ViewGroup.LayoutParams(-1, -1));
         pageAnimating = true;
+        PathInterpolator motion = new PathInterpolator(0.22f, 1f, 0.36f, 1f);
         previous.animate().translationX(-direction * distance * 0.22f).alpha(0f)
-                .setDuration(230).start();
-        next.animate().translationX(0f).alpha(1f).setDuration(260).withEndAction(() -> {
+                .setInterpolator(motion).setDuration(320)
+                .setUpdateListener(animation -> setMotionBlur(previous,
+                        dp(3.5f) * animation.getAnimatedFraction())).start();
+        next.animate().translationX(0f).alpha(1f).setInterpolator(motion).setDuration(360)
+                .setUpdateListener(animation -> setMotionBlur(next,
+                        dp(5f) * (1f - animation.getAnimatedFraction()))).withEndAction(() -> {
             pageHost.removeView(previous);
             previous.setTranslationX(0f);
             previous.setAlpha(1f);
+            setMotionBlur(previous, 0f);
+            setMotionBlur(next, 0f);
             pageAnimating = false;
             if (currentPage == 1 && aircraftPanel != null) aircraftPanel.refresh();
         }).start();
+    }
+
+    private void setMotionBlur(View view, float radius) {
+        if (Build.VERSION.SDK_INT < 31) return;
+        view.setRenderEffect(radius < 0.2f ? null : RenderEffect.createBlurEffect(
+                radius, Math.max(0.2f, radius * 0.22f), Shader.TileMode.CLAMP));
     }
 
     private ImageButton navButton(int icon, String description, int page) {
@@ -307,7 +323,7 @@ public class MainActivity extends Activity {
             ImageButton button = navigationButtons[i];
             if (button == null) continue;
             boolean selected = i == currentPage;
-            button.setImageTintList(ColorStateList.valueOf(selected ? GREEN : muted));
+            button.setImageTintList(ColorStateList.valueOf(selected ? text : muted));
             GradientDrawable backgroundDrawable = new GradientDrawable();
             backgroundDrawable.setColor(selected
                     ? (AppPreferences.isDark(this)
@@ -407,15 +423,15 @@ public class MainActivity extends Activity {
 
     private void refreshLiveData() {
         boolean running = isRunning();
-        radar.setScanning(running);
         status.setText(L10n.t(this, running ? "radar_active" : "radar_standby"));
-        status.setTextColor(running ? GREEN : muted);
+        status.setTextColor(running ? text : muted);
         toggle.setText(L10n.t(this, running ? "stop_monitoring" : "start_monitoring"));
         styleToggle(running);
 
         int count = preferences.getInt(AppPreferences.KEY_LIVE_COUNT, 0);
         countValue.setText(String.valueOf(count));
         String connection = preferences.getString(AppPreferences.KEY_CONNECTION, "standby");
+        radar.setScanning(running && "connected".equals(connection));
         boolean loading = running && !"connected".equals(connection);
         startupProgress.setVisibility(loading ? View.VISIBLE : View.GONE);
         connectionValue.setVisibility(loading ? View.GONE : View.VISIBLE);
@@ -477,7 +493,7 @@ public class MainActivity extends Activity {
     private ImageButton iconButton(int drawable, String description) {
         ImageButton button = new ImageButton(this);
         button.setImageResource(drawable);
-        button.setImageTintList(ColorStateList.valueOf(BLUE));
+        button.setImageTintList(ColorStateList.valueOf(muted));
         button.setContentDescription(description);
         button.setPadding(dp(14), dp(14), dp(14), dp(14));
         button.setScaleType(ImageButton.ScaleType.CENTER_INSIDE);
@@ -504,11 +520,11 @@ public class MainActivity extends Activity {
 
     private void styleToggle(boolean running) {
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(running ? surface : GREEN);
+        bg.setColor(surface);
         bg.setCornerRadius(dp(18));
-        bg.setStroke(dp(running ? 2 : 1), running ? ORANGE : GREEN);
+        bg.setStroke(dp(1), running ? ORANGE : GREEN);
         toggle.setBackground(bg);
-        toggle.setTextColor(running ? ORANGE : MARColors.INK);
+        toggle.setTextColor(running ? ORANGE : GREEN);
         toggle.setElevation(dp(running ? 1 : 3));
     }
 
@@ -537,4 +553,5 @@ public class MainActivity extends Activity {
     }
 
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+    private float dp(float value) { return value * getResources().getDisplayMetrics().density; }
 }

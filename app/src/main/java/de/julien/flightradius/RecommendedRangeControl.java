@@ -3,7 +3,6 @@ package de.julien.flightradius;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
-import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.widget.FrameLayout;
 import android.widget.SeekBar;
@@ -27,20 +26,13 @@ final class RecommendedRangeControl extends FrameLayout {
         addView(seekBar, seekParams);
 
         marker = new TextView(context);
-        marker.setText("★  " + L10n.t(context, "recommended_short") + "  •  "
-                + AppPreferences.distance(context, 25));
-        marker.setTextSize(10);
-        marker.setTextColor(MARColors.GREEN);
+        marker.setText(L10n.t(context, "recommended_short"));
+        marker.setTextSize(9);
+        marker.setTextColor(AppPreferences.isDark(context)
+                ? MARColors.DARK_MUTED : MARColors.LIGHT_MUTED);
         marker.setGravity(Gravity.CENTER);
-        marker.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        marker.setPadding(dp(9), dp(4), dp(9), dp(4));
-        GradientDrawable markerBackground = new GradientDrawable();
-        markerBackground.setColor(AppPreferences.isDark(context)
-                ? MARColors.DARK_SELECTED : MARColors.LIGHT_SELECTED);
-        markerBackground.setStroke(dp(1), MARColors.GREEN);
-        markerBackground.setCornerRadius(dp(10));
-        marker.setBackground(markerBackground);
-        LayoutParams markerParams = new LayoutParams(-2, dp(27));
+        marker.setPadding(dp(3), 0, dp(3), 0);
+        LayoutParams markerParams = new LayoutParams(-2, dp(18));
         markerParams.gravity = Gravity.TOP;
         markerParams.topMargin = dp(43);
         addView(marker, markerParams);

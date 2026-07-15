@@ -398,7 +398,7 @@ public class MonitorService extends Service implements LocationListener {
                 .setContentTitle(callsign)
                 .setContentText(details)
                 .setStyle(new Notification.BigTextStyle().bigText(details))
-                .setSubText(L10n.t(this, "found_via"))
+                .setSubText(callsign)
                 .setColor(inRange ? MARColors.ORANGE : MARColors.RED)
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setContentIntent(tracker)

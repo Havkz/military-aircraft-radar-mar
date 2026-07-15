@@ -47,7 +47,7 @@ final class SettingsPanel extends ScrollView {
                 29, text, Typeface.BOLD);
         root.addView(title);
         TextView subtitle = label(L10n.t(host, "configuration"),
-                11, MARColors.GREEN, Typeface.BOLD);
+                11, muted, Typeface.BOLD);
         subtitle.setLetterSpacing(0.12f);
         subtitle.setPadding(0, dp(5), 0, 0);
         root.addView(subtitle);
@@ -148,7 +148,7 @@ final class SettingsPanel extends ScrollView {
             final int choice = i;
             boolean active = i == selected;
             TextView option = label((active ? "●  " : "○  ") + labels[i], 15,
-                    active ? MARColors.GREEN : text,
+                    text,
                     active ? Typeface.BOLD : Typeface.NORMAL);
             option.setGravity(Gravity.CENTER_VERTICAL);
             option.setPadding(dp(15), dp(13), dp(15), dp(13));
