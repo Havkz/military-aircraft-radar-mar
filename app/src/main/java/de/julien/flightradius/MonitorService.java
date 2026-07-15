@@ -53,7 +53,6 @@ public class MonitorService extends Service implements LocationListener {
     static final String ACTION_RADIUS_CHANGED = "de.julien.flightradius.RADIUS_CHANGED";
     private static final long DISMISSED_RESEND_DELAY_MS = 5 * 60 * 1000L;
     private static final int STATUS_NOTIFICATION_ID = 1001;
-    private static final int MILITARY_FLAG = 1;
 
     private final Map<String, JSONObject> lastKnownAlerts = new HashMap<>();
     private final Map<String, JSONObject> sessionHistory = new LinkedHashMap<>();
@@ -207,14 +206,7 @@ public class MonitorService extends Service implements LocationListener {
                 own.getLatitude(), own.getLongitude(), radiusNm);
 
         try {
-            JSONArray aircraft;
-            boolean militaryEndpoint = true;
-            try {
-                aircraft = fetchAircraft("https://api.adsb.lol/v2/mil");
-            } catch (Exception militaryFailure) {
-                militaryEndpoint = false;
-                aircraft = fetchAircraft(localEndpoint);
-            }
+            JSONArray aircraft = fetchAircraft(localEndpoint);
             JSONArray liveAircraft = new JSONArray();
             Set<String> currentlyInside = new HashSet<>();
             long scanTime = System.currentTimeMillis();
@@ -225,8 +217,7 @@ public class MonitorService extends Service implements LocationListener {
             if (aircraft != null) {
                 for (int i = 0; i < aircraft.length(); i++) {
                     JSONObject plane = aircraft.optJSONObject(i);
-                    if (plane == null || (!militaryEndpoint
-                            && (plane.optInt("dbFlags", 0) & MILITARY_FLAG) == 0)) continue;
+                    if (!MilitaryClassifier.isMilitary(plane)) continue;
                     double aircraftLat = plane.optDouble("lat", Double.NaN);
                     double aircraftLon = plane.optDouble("lon", Double.NaN);
                     if (Double.isNaN(aircraftLat) || Double.isNaN(aircraftLon)) continue;

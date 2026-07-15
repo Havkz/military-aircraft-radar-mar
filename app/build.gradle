@@ -8,7 +8,7 @@ android {
         applicationId 'de.julien.flightradius'
         minSdk 26
         targetSdk 35
-        versionCode 24
-        versionName '4.1-beta-test.11'
+        versionCode 25
+        versionName '4.1-beta-test.12'
     }
 }

@@ -16,8 +16,7 @@ struct Aircraft: Identifiable, Hashable {
 
     init?(json: [String: Any]) {
         guard let hex = json["hex"] as? String,
-              let flags = (json["dbFlags"] as? NSNumber)?.intValue,
-              flags & 1 == 1,
+              MilitaryClassifier.isMilitary(json),
               let distanceNm = (json["dst"] as? NSNumber)?.doubleValue,
               let latitude = (json["lat"] as? NSNumber)?.doubleValue,
               let longitude = (json["lon"] as? NSNumber)?.doubleValue else { return nil }

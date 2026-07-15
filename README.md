@@ -55,7 +55,7 @@ MAR stops monitoring and removes its notifications when its Android app task is 
 
 ### Does MAR detect every military aircraft?
 
-No. ADS-B and MLAT coverage is incomplete. Some aircraft do not transmit a usable position, may be outside receiver coverage, or may not be classified correctly by the upstream database. MAR includes military-tagged fixed-wing aircraft and helicopters when usable data is available, but complete detection cannot be guaranteed.
+No. ADS-B and MLAT coverage is incomplete. Some aircraft do not transmit a usable position, may be outside receiver coverage, or may not be classified correctly by the upstream database. MAR combines the upstream military flag with a conservative list of purpose-built military type designators and recognized military callsign prefixes. This also catches aircraft such as a `C30J` whose database entry may contain only a privacy-related flag. Complete detection still cannot be guaranteed.
 
 ### Is the displayed information truly live?
 
@@ -100,7 +100,7 @@ Some aircraft may not be visible on Flightradar24. ADS-B Exchange can therefore 
 4. Contacts inside the configured radius update the radar, aircraft list, session history, and notifications.
 5. Tracker links are opened only when the user explicitly selects an aircraft or notification.
 
-The primary Android request uses ADSB.lol's dedicated military endpoint. If that request fails, MAR falls back to the nearby-aircraft endpoint and applies the military `dbFlags` bit. Flightradar24 and ADS-B Exchange are external viewing destinations only; MAR does not scrape either service.
+Both platforms request the nearby-aircraft endpoint for the configured area. MAR accepts an aircraft when ADSB.lol supplies the military `dbFlags` bit, when its ICAO type designator identifies a purpose-built military aircraft, or when its callsign matches a recognized military prefix. The type list deliberately excludes common mixed-use civilian airframes to limit false alerts. Flightradar24 and ADS-B Exchange are external viewing destinations only; MAR does not scrape either service.
 
 ### Accuracy limitations
 
