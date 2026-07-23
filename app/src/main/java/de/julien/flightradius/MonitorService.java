@@ -53,6 +53,7 @@ public class MonitorService extends Service implements LocationListener {
     static final String ACTION_RADIUS_CHANGED = "de.julien.flightradius.RADIUS_CHANGED";
     private static final long DISMISSED_RESEND_DELAY_MS = 5 * 60 * 1000L;
     private static final int STATUS_NOTIFICATION_ID = 1001;
+    private static final String MILITARY_ENDPOINT = "https://api.adsb.lol/v2/mil";
 
     private final Map<String, JSONObject> lastKnownAlerts = new HashMap<>();
     private final Map<String, JSONObject> sessionHistory = new LinkedHashMap<>();
@@ -207,7 +208,8 @@ public class MonitorService extends Service implements LocationListener {
                 own.getLatitude(), own.getLongitude(), radiusNm);
 
         try {
-            JSONArray aircraft = fetchAircraft(localEndpoint);
+            JSONArray aircraft = AircraftData.mergeByHex(
+                    fetchAircraft(localEndpoint), fetchAircraftOptional(MILITARY_ENDPOINT));
             JSONArray liveAircraft = new JSONArray();
             Set<String> currentlyInside = new HashSet<>();
             long scanTime = System.currentTimeMillis();
@@ -219,8 +221,10 @@ public class MonitorService extends Service implements LocationListener {
                 for (int i = 0; i < aircraft.length(); i++) {
                     JSONObject plane = aircraft.optJSONObject(i);
                     if (!MilitaryClassifier.isMilitary(plane)) continue;
-                    double aircraftLat = plane.optDouble("lat", Double.NaN);
-                    double aircraftLon = plane.optDouble("lon", Double.NaN);
+                    double[] position = AircraftData.recentPosition(plane);
+                    if (position == null) continue;
+                    double aircraftLat = position[0];
+                    double aircraftLon = position[1];
                     double distanceKm = DistanceCalculator.kilometers(
                             own.getLatitude(), own.getLongitude(), aircraftLat, aircraftLon);
                     if (Double.isNaN(distanceKm) || distanceKm > radiusKm) continue;
@@ -232,7 +236,7 @@ public class MonitorService extends Service implements LocationListener {
                     militaryCount++;
                     currentlyInside.add(hex);
                     JSONObject compact = compactAircraft(plane, hex, callsign,
-                            distanceKm, altitudeFt);
+                            distanceKm, altitudeFt, aircraftLat, aircraftLon);
                     liveAircraft.put(compact);
                     updateSessionRecord(compact, scanTime);
                     if (!callsign.isEmpty() && (Double.isNaN(nearestDistanceKm)
@@ -284,6 +288,14 @@ public class MonitorService extends Service implements LocationListener {
             return aircraft == null ? new JSONArray() : aircraft;
         } finally {
             if (connection != null) connection.disconnect();
+        }
+    }
+
+    private JSONArray fetchAircraftOptional(String endpoint) {
+        try {
+            return fetchAircraft(endpoint);
+        } catch (Exception ignored) {
+            return new JSONArray();
         }
     }
 
@@ -417,7 +429,8 @@ public class MonitorService extends Service implements LocationListener {
     }
 
     private JSONObject compactAircraft(JSONObject plane, String hex, String callsign,
-                                       double distanceKm, double altitudeFt) throws Exception {
+                                       double distanceKm, double altitudeFt,
+                                       double latitude, double longitude) throws Exception {
         JSONObject item = new JSONObject();
         item.put("hex", hex);
         item.put("callsign", callsign);
@@ -428,8 +441,8 @@ public class MonitorService extends Service implements LocationListener {
         item.put("speed_knots", plane.optDouble("gs", 0));
         item.put("track", plane.optDouble("track", 0));
         item.put("squawk", plane.optString("squawk", ""));
-        item.put("lat", plane.optDouble("lat", 0));
-        item.put("lon", plane.optDouble("lon", 0));
+        item.put("lat", latitude);
+        item.put("lon", longitude);
         item.put("seen", plane.optDouble("seen", 0));
         item.put("emergency", plane.optString("emergency", "none"));
         return item;

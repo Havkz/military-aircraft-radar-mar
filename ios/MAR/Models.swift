@@ -17,11 +17,10 @@ struct Aircraft: Identifiable, Hashable {
     init?(json: [String: Any], userLatitude: Double, userLongitude: Double) {
         guard let hex = json["hex"] as? String,
               MilitaryClassifier.isMilitary(json),
-              let latitude = (json["lat"] as? NSNumber)?.doubleValue,
-              let longitude = (json["lon"] as? NSNumber)?.doubleValue,
+              let position = Self.recentPosition(json),
               let calculatedDistance = Self.distanceKm(
                 fromLatitude: userLatitude, longitude: userLongitude,
-                toLatitude: latitude, longitude: longitude) else { return nil }
+                toLatitude: position.latitude, longitude: position.longitude) else { return nil }
         id = hex.replacingOccurrences(of: "~", with: "")
         callsign = (json["flight"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
         registration = json["r"] as? String ?? ""
@@ -32,9 +31,30 @@ struct Aircraft: Identifiable, Hashable {
         speedKnots = (json["gs"] as? NSNumber)?.doubleValue ?? 0
         track = (json["track"] as? NSNumber)?.doubleValue ?? 0
         squawk = json["squawk"] as? String ?? "—"
-        self.latitude = latitude
-        self.longitude = longitude
+        latitude = position.latitude
+        longitude = position.longitude
         seen = (json["seen"] as? NSNumber)?.doubleValue ?? 0
+    }
+
+    private static func recentPosition(_ json: [String: Any])
+        -> (latitude: Double, longitude: Double)? {
+        if let latitude = (json["lat"] as? NSNumber)?.doubleValue,
+           let longitude = (json["lon"] as? NSNumber)?.doubleValue,
+           validCoordinate(latitude, longitude) {
+            return (latitude, longitude)
+        }
+        guard let last = json["lastPosition"] as? [String: Any],
+              let age = (last["seen_pos"] as? NSNumber)?.doubleValue,
+              (0...60).contains(age),
+              let latitude = (last["lat"] as? NSNumber)?.doubleValue,
+              let longitude = (last["lon"] as? NSNumber)?.doubleValue,
+              validCoordinate(latitude, longitude) else { return nil }
+        return (latitude, longitude)
+    }
+
+    private static func validCoordinate(_ latitude: Double, _ longitude: Double) -> Bool {
+        latitude.isFinite && longitude.isFinite
+            && (-90...90).contains(latitude) && (-180...180).contains(longitude)
     }
 
     private static func altitudeFeet(geometric: Any?, barometric: Any?) -> Double? {

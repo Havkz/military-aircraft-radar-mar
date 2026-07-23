@@ -95,12 +95,12 @@ Some aircraft may not be visible on Flightradar24. ADS-B Exchange can therefore 
 ### Data flow
 
 1. Android or iOS provides the device's current location while monitoring is active.
-2. MAR requests the ADSB.lol military feed over HTTPS.
+2. MAR requests the nearby-aircraft and military feeds from ADSB.lol over HTTPS.
 3. MAR calculates the distance to each returned aircraft locally from its coordinates.
 4. Contacts inside the configured radius update the radar, aircraft list, session history, and notifications.
 5. Tracker links are opened only when the user explicitly selects an aircraft or notification.
 
-Both platforms request the nearby-aircraft endpoint for the configured area. MAR accepts an aircraft when ADSB.lol supplies the military `dbFlags` bit, when its ICAO type designator identifies a purpose-built military aircraft, or when its callsign matches a recognized military prefix. The type list deliberately excludes common mixed-use civilian airframes to limit false alerts. Flightradar24 and ADS-B Exchange are external viewing destinations only; MAR does not scrape either service.
+Both platforms merge the nearby-aircraft response with ADSB.lol's military feed and remove duplicates by ICAO hex address. A recent position up to 60 seconds old can bridge short MLAT position dropouts; older or invalid positions are rejected. MAR accepts an aircraft when ADSB.lol supplies the military `dbFlags` bit, when its ICAO type designator identifies a purpose-built military aircraft, or when its callsign matches a recognized military prefix. The type list deliberately excludes common mixed-use civilian airframes to limit false alerts. Flightradar24 and ADS-B Exchange are external viewing destinations only; MAR does not scrape either service.
 
 ### Accuracy limitations
 
