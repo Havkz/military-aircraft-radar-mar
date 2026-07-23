@@ -1,12 +1,14 @@
 # Legal and data-source notice
 
-Last reviewed: July 15, 2026
+Last reviewed: July 23, 2026
 
 This document describes how Military Aircraft Radar (MAR) currently interacts with external data and tracker services. It is provided for transparency and is not legal advice. Service terms and licenses may change; maintainers and distributors remain responsible for reviewing the current official terms.
 
 ## ADSB.lol
 
 ADSB.lol is MAR's aircraft-data provider. Its official API documentation states that the API is available to everyone and identifies the API data license as the Open Database License (ODbL) 1.0.
+
+MAR uses ADSB.lol's nearby-aircraft and military endpoints, merges the responses on the device, and does not operate or publish a separate aircraft-data service.
 
 MAR treats the aircraft information shown in the app as output produced from the ADSB.lol database and includes the following attribution in the application and project documentation:
 

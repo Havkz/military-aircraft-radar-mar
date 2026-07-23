@@ -62,13 +62,20 @@ final class RadarStore: NSObject, ObservableObject, CLLocationManagerDelegate {
         let radiusNm = min(250, max(1, Int(ceil(radiusKm / 1.852))))
         let endpoint = "https://api.adsb.lol/v2/lat/\(String(format: "%.5f", location.coordinate.latitude))/lon/\(String(format: "%.5f", location.coordinate.longitude))/dist/\(radiusNm)"
         guard let url = URL(string: endpoint) else { return }
+        let militaryURL = URL(string: "https://api.adsb.lol/v2/mil")!
         connection = "Connecting…"
         Task {
             do {
-                let (data, response) = try await URLSession.shared.data(from: url)
-                guard (response as? HTTPURLResponse)?.statusCode == 200,
-                      let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let rows = root["ac"] as? [[String: Any]] else { throw URLError(.badServerResponse) }
+                let localRows = try await fetchRows(from: url)
+                let militaryRows = (try? await fetchRows(from: militaryURL)) ?? []
+                var rowsByHex: [String: [String: Any]] = [:]
+                for row in militaryRows + localRows {
+                    guard let rawHex = row["hex"] as? String else { continue }
+                    let hex = rawHex.replacingOccurrences(of: "~", with: "").lowercased()
+                    guard !hex.isEmpty else { continue }
+                    rowsByHex[hex, default: [:]].merge(row) { _, incoming in incoming }
+                }
+                let rows = Array(rowsByHex.values)
                 let current = rows.compactMap {
                     Aircraft(json: $0,
                              userLatitude: location.coordinate.latitude,
@@ -82,6 +89,16 @@ final class RadarStore: NSObject, ObservableObject, CLLocationManagerDelegate {
                 seen = Set(current.map(\.id))
             } catch { connection = "Connection unavailable" }
         }
+    }
+
+    private func fetchRows(from url: URL) async throws -> [[String: Any]] {
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard (response as? HTTPURLResponse)?.statusCode == 200,
+              let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rows = root["ac"] as? [[String: Any]] else {
+            throw URLError(.badServerResponse)
+        }
+        return rows
     }
 
     private func notify(_ plane: Aircraft) {

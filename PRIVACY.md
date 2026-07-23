@@ -1,6 +1,6 @@
 # Privacy
 
-Last updated: July 14, 2026
+Last updated: July 23, 2026
 
 Military Aircraft Radar (MAR) is an open-source Android and iOS application. It does not include advertising, analytics, crash-reporting, or user-account SDKs, and the project maintainer does not operate a backend service for the app.
 
@@ -12,7 +12,7 @@ App preferences and recent aircraft state are stored locally in platform-managed
 
 ## Data sent to third parties
 
-While monitoring is active, Android and iOS send the device latitude, longitude, and selected radius to ADSB.lol's nearby-aircraft endpoint. The applications then classify and filter the returned aircraft locally. ADSB.lol can also receive the connection's IP address.
+While monitoring is active, Android and iOS send the device latitude, longitude, and selected radius to ADSB.lol's nearby-aircraft endpoint. They also request ADSB.lol's global military feed, which does not include the device location in its request. The applications merge, classify, and radius-filter the returned aircraft locally. ADSB.lol can also receive the connection's IP address.
 
 When the user chooses to open an aircraft in Flightradar24 or ADS-B Exchange, Android opens the selected service's app or website with aircraft-identifying or map-position information in the link. Those services process data under their own terms and privacy policies.
 
