@@ -112,6 +112,7 @@ final class MapL10n {
             {"longitude", "Longitude"},
             {"position", "Position"},
             {"loading_photo", "Searching aircraft photo …"},
+            {"photo_may_differ", "Photo may differ from the actual aircraft"},
             {"other", "Other"},
             {"cycle_map_style", "Change map style"},
             {"distance", "Distance"},

@@ -15,10 +15,13 @@ import android.widget.FrameLayout;
 import org.json.JSONObject;
 
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 final class AircraftMapPanel extends FrameLayout {
     private final Activity host;
     private final WebView webView;
+    private final ExecutorService photoExecutor = Executors.newFixedThreadPool(2);
     private boolean ready;
     private boolean pendingRefresh;
     private boolean pageVisible;
@@ -42,7 +45,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.17 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.18 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
@@ -158,9 +161,25 @@ final class AircraftMapPanel extends FrameLayout {
                 }
             });
         }
+
+        @JavascriptInterface public void requestAircraftPhoto(
+                String hex, String registration, String aircraftType) {
+            photoExecutor.submit(() -> {
+                JSONObject result = AircraftPhotoLookup.find(registration, aircraftType);
+                String script = "window.marPhotoResult&&window.marPhotoResult("
+                        + JSONObject.quote(hex == null ? "" : hex) + ","
+                        + JSONObject.quote(registration == null ? "" : registration) + ","
+                        + result.toString() + ")";
+                host.runOnUiThread(() -> {
+                    if (ready) webView.evaluateJavascript(script, null);
+                });
+            });
+        }
     }
 
     void destroy() {
+        ready = false;
+        photoExecutor.shutdownNow();
         webView.stopLoading();
         webView.destroy();
     }
