@@ -8,7 +8,7 @@
   <script src="leaflet/leaflet.js"></script>
   <style>
     :root{--bg:#071018;--panel:#080b0e;--text:#eef5f8;--muted:#9daab2;--line:#43505a;--blue:#18a9ee;--green:#72f1b8;--orange:#ff9f43;--scale:1}
-    *{box-sizing:border-box}html,body,#map{height:100%;margin:0;background:var(--bg);font:calc(14px * var(--scale)) system-ui,sans-serif;color:var(--text)}#trafficCanvas{position:absolute;z-index:450;inset:0;width:100%;height:100%;pointer-events:none}
+    *{box-sizing:border-box}html,body,#map{height:100%;margin:0;background:var(--bg);font:calc(14px * var(--scale)) system-ui,sans-serif;color:var(--text)}#trafficCanvas{position:absolute;z-index:625;left:0;top:0;width:100%;height:100%;pointer-events:none}
     .leaflet-container{background:#dce4e8}body.dark .leaflet-tile-pane{filter:brightness(.57) saturate(.78) contrast(1.12)}
     .toolbar{position:absolute;z-index:700;top:8px;left:8px;right:8px;display:flex;gap:5px;pointer-events:none}.tools{display:flex;background:rgba(0,0,0,.88);border-radius:20px;padding:2px;box-shadow:0 2px 7px #0007;pointer-events:auto}.tools.right{margin-left:auto}
     button,.tool{border:0;color:#fff;background:transparent;font:inherit}.tool{width:34px;height:34px;border-radius:17px;font-size:18px;padding:0}.tool.active{background:#075dab;color:#fff}.tool:active{background:#26313a}.search{position:absolute;z-index:710;top:52px;left:8px;right:8px;background:#050709;border:1px solid var(--line);border-radius:12px;padding:8px;display:none}.search.open{display:flex}.search input,.filters input{min-width:0;flex:1;background:#0d1318;border:1px solid #62707a;color:#fff;border-radius:8px;padding:9px;font:inherit}
@@ -70,6 +70,7 @@
   const baseTiles=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{minZoom:2,maxZoom:19,maxNativeZoom:19,keepBuffer:6,updateWhenIdle:false,updateWhenZooming:true,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'}).addTo(map);
   const ownLayer=L.layerGroup().addTo(map),measureLayer=L.layerGroup().addTo(map);
   const trafficCanvas=document.getElementById('trafficCanvas'),trafficContext=trafficCanvas.getContext('2d');
+  map.getContainer().appendChild(trafficCanvas);
   let aircraft=[],settings={},own=[null,null],centered=false,selected=new Set(),history=new Map(),lastSeen=new Map(),known=new Map(),renderedTargets=[],canvasFrame=0,canvasRenders=0,renderStats={planes:0,rotorcraft:0,labels:0,trails:0};
   let flags={follow:false,isolate:false,allTracks:false,multiple:false,trackTimestamps:false,militaryOnly:false},filters={sources:new Set(),db:new Set()},measurePoints=[],sessionOverrides=new Set(),filtersRestored=false;
   const defaults={textScale:1,iconScale:1,dark:false,darker:false,dim:false,coloredPlanes:true,coloredTrails:true,hardwareTracks:true,showLabels:false,labelUnits:true,smallLabels:true,smallWindLabels:true,geometricAltitude:false,egmConversion:false,qnhCorrection:false,liveTrackUtc:false,historicTrackUtc:true,lastLegOnly:true,altitudeChart:true,infoblock:true,wideInfoblock:false,hoverInfoblock:false,autoSelect:false,picturesPlanespotters:true,picturesPlanespotting:false,groundVehicles:true,nonIcao:true,updateGps:true,includeFiltersUrl:false,keepFaded:false,debugTracks:false,debugShowAll:false,metric:false};
