@@ -97,7 +97,7 @@ final class MapL10n {
             {"altitude_details", "Altitude"},
             {"movement", "Movement"},
             {"signal_accuracy", "Signal & accuracy"},
-            {"zoom_in_traffic", "Zoom in to load live traffic"},
+            {"too_many_traffic", "Too many aircraft in view (limit 1,500). Zoom in to continue loading."},
             {"important", "Important"},
             {"data_provider", "Data provider"},
             {"emergency", "Emergency"},
