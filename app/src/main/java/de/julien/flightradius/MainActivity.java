@@ -253,13 +253,6 @@ public class MainActivity extends Activity {
         pageHost.setListener(direction -> switchPage(currentPage + direction));
         shell.addView(pageHost, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        TextView footer = label("ADSB.LOL  •  AIRPLANES.LIVE  •  ADS-B EXCHANGE",
-                9, muted, Typeface.NORMAL);
-        footer.setGravity(Gravity.CENTER);
-        footer.setLetterSpacing(0.06f);
-        footer.setPadding(dp(8), dp(5), dp(8), dp(5));
-        shell.addView(footer, new LinearLayout.LayoutParams(-1, dp(28)));
-
         LinearLayout navigation = new LinearLayout(this);
         navigation.setGravity(Gravity.CENTER);
         navigation.setPadding(dp(14), dp(4), dp(14), dp(6));

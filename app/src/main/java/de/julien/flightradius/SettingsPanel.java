@@ -405,7 +405,9 @@ final class SettingsPanel extends ScrollView {
 
         section(root, MapL10n.t(host, "labels_altitude"));
         addMapSwitch(root, MapL10n.t(host, "show_labels"),
-                MapPreferences.SHOW_LABELS, false);
+                MapPreferences.SHOW_LABELS, true);
+        addScale(root, MapL10n.t(host, "label_transparency"),
+                MapPreferences.LABEL_TRANSPARENCY, 0, 95, 80);
         addMapSwitch(root, MapL10n.t(host, "label_units"),
                 MapPreferences.LABEL_UNITS, true);
         addMapSwitch(root, MapL10n.t(host, "smaller_labels"),

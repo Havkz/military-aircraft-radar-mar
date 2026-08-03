@@ -70,6 +70,8 @@ public class MonitorService extends Service implements LocationListener {
     private static final int MAX_MAP_CACHE_AIRCRAFT = 5_000;
     private static final double MAP_MAX_POSITION_AGE_SECONDS = 210d;
     private static final int EXPANDED_MAP_RADIUS_NM = 250;
+    private static final int MAP_SUPPLEMENTAL_RADIUS_NM = 45;
+    private static final long MAP_SUPPLEMENTAL_DWELL_MS = 12_000L;
     private static final double NAUTICAL_MILE_KM = 1.852d;
     private static final long WAKE_LOCK_TIMEOUT_MS = 10 * 60_000L;
     private static final long WAKE_LOCK_RENEW_MS = 9 * 60_000L;
@@ -83,6 +85,7 @@ public class MonitorService extends Service implements LocationListener {
     private static volatile double mapCenterLatitude = Double.NaN;
     private static volatile double mapCenterLongitude = Double.NaN;
     private static volatile int mapRadiusNm = 25;
+    private static volatile long mapViewportChangedAtMs = System.currentTimeMillis();
     private static final Map<String, JSONObject> mapAircraftCache = new LinkedHashMap<>();
     private static final Map<String, Long> mapAircraftCacheTimes = new HashMap<>();
 
@@ -132,6 +135,7 @@ public class MonitorService extends Service implements LocationListener {
         mapCenterLatitude = latitude;
         mapCenterLongitude = longitude;
         mapRadiusNm = boundedRadius;
+        if (changed) mapViewportChangedAtMs = System.currentTimeMillis();
         return changed;
     }
 
@@ -148,6 +152,12 @@ public class MonitorService extends Service implements LocationListener {
     static long airplanesBaseRefreshMs(boolean businessRateAuthorized) {
         return businessRateAuthorized
                 ? AIRPLANES_BUSINESS_REFRESH_MS : AIRPLANES_REFRESH_MS;
+    }
+
+    static boolean shouldQueryMapSupplementalSources(
+            boolean expandedMap, int radiusNm, long viewportStableMs) {
+        return !expandedMap || radiusNm <= MAP_SUPPLEMENTAL_RADIUS_NM
+                || viewportStableMs >= MAP_SUPPLEMENTAL_DWELL_MS;
     }
 
     private final Runnable pollTask = new Runnable() {
@@ -360,18 +370,22 @@ public class MonitorService extends Service implements LocationListener {
         if (expandedMap) mapLoading = true;
         try {
             long now = System.currentTimeMillis();
+            boolean querySupplemental = shouldQueryMapSupplementalSources(expandedMap,
+                    radiusNm, Math.max(0L, now - mapViewportChangedAtMs));
             Future<JSONArray> regionalFuture = networkPool.submit(
                     () -> fetchAircraft(localEndpoint, null, "adsb.lol"));
             Future<JSONArray> militaryFuture = null;
             Future<JSONArray> airplanesFuture = null;
             Future<JSONArray> adsbxFuture = null;
-            if (now - lastAdsbLolMilitaryFetchMs >= ADSB_LOL_MILITARY_REFRESH_MS) {
+            if (querySupplemental
+                    && now - lastAdsbLolMilitaryFetchMs >= ADSB_LOL_MILITARY_REFRESH_MS) {
                 militaryFuture = networkPool.submit(
                         () -> fetchAircraft(MILITARY_ENDPOINT, null, "adsb.lol"));
             }
             long persistedAirplanesAttempt = AppPreferences.get(this).getLong(
                     AppPreferences.KEY_AIRPLANES_LAST_ATTEMPT_MS, 0L);
-            if (now - Math.max(lastAirplanesFetchMs, persistedAirplanesAttempt)
+            if (querySupplemental
+                    && now - Math.max(lastAirplanesFetchMs, persistedAirplanesAttempt)
                     >= nextAirplanesDelayMs()) {
                 lastAirplanesFetchMs = now;
                 AppPreferences.get(this).edit()
@@ -383,7 +397,7 @@ public class MonitorService extends Service implements LocationListener {
                         () -> fetchAircraft(airplanesEndpoint, null, "airplanes.live"));
             }
             String adsbxKey = ProviderCredentials.adsbExchangeKey(this);
-            if (!adsbxKey.isEmpty()
+            if (querySupplemental && !adsbxKey.isEmpty()
                     && now - lastAdsbExchangeFetchMs >= ADSBX_REFRESH_MS) {
                 String adsbxEndpoint = String.format(Locale.US,
                         "https://api.adsbexchange.com/v2/lat/%.5f/lon/%.5f/dist/%d/",

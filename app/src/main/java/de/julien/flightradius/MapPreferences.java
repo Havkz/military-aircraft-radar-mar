@@ -14,6 +14,7 @@ final class MapPreferences {
     static final String COLORED_PLANES = "map_colored_planes";
     static final String COLORED_TRAILS = "map_colored_trails";
     static final String SHOW_LABELS = "map_show_labels";
+    static final String LABEL_TRANSPARENCY = "map_label_transparency";
     static final String LABEL_UNITS = "map_label_units";
     static final String SMALL_LABELS = "map_small_labels";
     static final String GEOMETRIC_ALTITUDE = "map_geometric_altitude";
@@ -39,7 +40,7 @@ final class MapPreferences {
 
     private static final String[] KEYS = {
             TEXT_SCALE, ICON_SCALE, DARK, DARKER, DIM, COLORED_PLANES,
-            COLORED_TRAILS, SHOW_LABELS, LABEL_UNITS, SMALL_LABELS,
+            COLORED_TRAILS, SHOW_LABELS, LABEL_TRANSPARENCY, LABEL_UNITS, SMALL_LABELS,
             GEOMETRIC_ALTITUDE, EGM_CONVERSION, QNH_CORRECTION,
             TRACK_UTC, HISTORIC_TRACK_UTC,
             LAST_LEG_ONLY, ALTITUDE_CHART, INFOBLOCK, WIDE_INFOBLOCK,
@@ -64,6 +65,8 @@ final class MapPreferences {
             result.put("coloredPlanes", preferences.getBoolean(COLORED_PLANES, true));
             result.put("coloredTrails", preferences.getBoolean(COLORED_TRAILS, true));
             result.put("showLabels", preferences.getBoolean(SHOW_LABELS, true));
+            result.put("labelTransparency",
+                    preferences.getFloat(LABEL_TRANSPARENCY, 0.8f));
             result.put("labelUnits", preferences.getBoolean(LABEL_UNITS, true));
             result.put("smallLabels", preferences.getBoolean(SMALL_LABELS, true));
             result.put("geometricAltitude",
