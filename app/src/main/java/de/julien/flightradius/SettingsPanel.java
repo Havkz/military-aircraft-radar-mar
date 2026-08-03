@@ -95,6 +95,10 @@ final class SettingsPanel extends ScrollView {
         addLegal(root);
     }
 
+    void openCustomAlerts() {
+        showAlertRules(() -> { });
+    }
+
     private void addDropdown(LinearLayout root, String title, String key,
                              String[] values, String[] labels, boolean rebuild) {
         LinearLayout row = settingRow(title);
@@ -222,7 +226,7 @@ final class SettingsPanel extends ScrollView {
         for (int i = 0; i < rules.size(); i++) {
             CustomAlertRules.Rule rule = rules.get(i);
             entries[i + 1] = (rule.enabled ? "●  " : "○  ")
-                    + CustomAlertRules.description(rule);
+                    + ruleSummary(rule);
         }
         new AlertDialog.Builder(host)
                 .setTitle(MapL10n.t(host, "custom_alerts"))
@@ -270,7 +274,7 @@ final class SettingsPanel extends ScrollView {
                 : MapL10n.t(host, "enable"), MapL10n.t(host, "edit"),
                 MapL10n.t(host, "delete")};
         new AlertDialog.Builder(host)
-                .setTitle(CustomAlertRules.description(rule))
+                .setTitle(ruleSummary(rule))
                 .setItems(actions, (dialog, which) -> {
                     if (which == 0) {
                         rule.enabled = !rule.enabled;
@@ -291,17 +295,26 @@ final class SettingsPanel extends ScrollView {
         EditText name = ruleField(form, MapL10n.t(host, "rule_name"), rule.name, false);
         EditText primary;
         EditText vertical = null;
+        boolean metric = AppPreferences.usesMetric(host);
+        boolean speedRule = CustomAlertRules.SPEED_BELOW.equals(rule.type)
+                || CustomAlertRules.SPEED_ABOVE.equals(rule.type);
         if (CustomAlertRules.SQUAWK.equals(rule.type)) {
             primary = ruleField(form, MapL10n.t(host, "squawk_code"), rule.squawk, false);
         } else {
-            String label = CustomAlertRules.SPEED_BELOW.equals(rule.type)
-                    || CustomAlertRules.SPEED_ABOVE.equals(rule.type)
-                    ? MapL10n.t(host, "speed_knots")
-                    : MapL10n.t(host, "altitude_feet");
-            primary = ruleField(form, label, String.valueOf(Math.round(rule.threshold)), true);
+            String label = speedRule ? MapL10n.t(host, "speed")
+                    + (metric ? " (km/h)" : " (kt)")
+                    : MapL10n.t(host, "altitude_details")
+                    + (metric ? " (m)" : " (ft)");
+            double shownThreshold = metric
+                    ? rule.threshold * (speedRule ? 1.852d : .3048d) : rule.threshold;
+            primary = ruleField(form, label,
+                    String.valueOf(Math.round(shownThreshold)), true);
             if (CustomAlertRules.LOW_LEVEL.equals(rule.type)) {
-                vertical = ruleField(form, MapL10n.t(host, "max_vertical_rate"),
-                        String.valueOf(Math.round(rule.verticalRate)), true);
+                vertical = ruleField(form, MapL10n.t(host, "vertical_rate")
+                                + (metric ? " (m/s)" : " (ft/min)"),
+                        metric ? String.format(java.util.Locale.US, "%.1f",
+                                rule.verticalRate * .00508d)
+                                : String.valueOf(Math.round(rule.verticalRate)), true);
             }
         }
         EditText duration = ruleField(form, MapL10n.t(host, "duration_seconds"),
@@ -321,11 +334,14 @@ final class SettingsPanel extends ScrollView {
                             rule.squawk = primary.getText().toString().trim();
                             if (!CustomAlertRules.validSquawk(rule.squawk)) throw new Exception();
                         } else {
-                            rule.threshold = Double.parseDouble(primary.getText().toString());
+                            double entered = Double.parseDouble(primary.getText().toString());
+                            rule.threshold = metric
+                                    ? entered / (speedRule ? 1.852d : .3048d) : entered;
                             if (rule.threshold < 0) throw new Exception();
                             if (verticalField != null) {
                                 rule.verticalRate = Double.parseDouble(
                                         verticalField.getText().toString());
+                                if (metric) rule.verticalRate /= .00508d;
                                 if (rule.verticalRate < 0) throw new Exception();
                             }
                         }
@@ -343,6 +359,23 @@ final class SettingsPanel extends ScrollView {
                     }
                 }));
         alert.show();
+    }
+
+    private String ruleSummary(CustomAlertRules.Rule rule) {
+        if (!rule.name.trim().isEmpty()) return rule.name.trim();
+        if (CustomAlertRules.SQUAWK.equals(rule.type)) return "Squawk " + rule.squawk;
+        boolean speedRule = CustomAlertRules.SPEED_BELOW.equals(rule.type)
+                || CustomAlertRules.SPEED_ABOVE.equals(rule.type);
+        String key = CustomAlertRules.LOW_LEVEL.equals(rule.type) ? "low_level"
+                : CustomAlertRules.ALTITUDE_BELOW.equals(rule.type) ? "altitude_below"
+                : CustomAlertRules.SPEED_BELOW.equals(rule.type) ? "speed_below"
+                : "speed_above";
+        String value;
+        if (speedRule) value = AppPreferences.usesMetric(host)
+                ? Math.round(rule.threshold * 1.852d) + " km/h"
+                : Math.round(rule.threshold) + " kt";
+        else value = AppPreferences.altitude(host, rule.threshold);
+        return MapL10n.t(host, key) + " · " + value;
     }
 
     private EditText ruleField(LinearLayout form, String hint, String value,

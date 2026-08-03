@@ -202,6 +202,15 @@ public class MainActivity extends Activity {
         rangeCard.addView(rangeControl, new LinearLayout.LayoutParams(-1, dp(74)));
         root.addView(rangeCard, cardParams());
 
+        Button alertRules = secondaryButton(MapL10n.t(this, "custom_alerts"));
+        alertRules.setOnClickListener(view -> {
+            if (settingsPanel == null) settingsPanel = new SettingsPanel(this, this::recreate);
+            settingsPanel.openCustomAlerts();
+        });
+        LinearLayout.LayoutParams alertParams = new LinearLayout.LayoutParams(-1, dp(52));
+        alertParams.setMargins(0, 0, 0, dp(10));
+        root.addView(alertRules, alertParams);
+
         toggle = neonButton("");
         toggle.setOnClickListener(v -> toggleMonitoring());
         LinearLayout.LayoutParams toggleParams = new LinearLayout.LayoutParams(-1, dp(62));

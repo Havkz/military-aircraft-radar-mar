@@ -59,6 +59,7 @@ public class MonitorService extends Service implements LocationListener {
             "de.julien.flightradius.NOTIFICATION_DISMISSED";
     static final String ACTION_RADIUS_CHANGED = "de.julien.flightradius.RADIUS_CHANGED";
     static final String ACTION_SOURCES_CHANGED = "de.julien.flightradius.SOURCES_CHANGED";
+    static final String ACTION_VIEWPORT_CHANGED = "de.julien.flightradius.VIEWPORT_CHANGED";
     private static final long DISMISSED_RESEND_DELAY_MS = 5 * 60 * 1000L;
     private static final long ADSB_LOL_MILITARY_REFRESH_MS = 60_000L;
     private static final long ADSB_LOL_BASE_REFRESH_MS = 1_000L;
@@ -76,6 +77,10 @@ public class MonitorService extends Service implements LocationListener {
     private static volatile double latestOwnLatitude = Double.NaN;
     private static volatile double latestOwnLongitude = Double.NaN;
     private static volatile boolean mapVisible;
+    private static volatile boolean mapLoading;
+    private static volatile double mapCenterLatitude = Double.NaN;
+    private static volatile double mapCenterLongitude = Double.NaN;
+    private static volatile int mapRadiusNm = 25;
 
     private final Map<String, JSONObject> lastKnownAlerts = new HashMap<>();
     private final Map<String, JSONObject> sessionHistory = new LinkedHashMap<>();
@@ -109,6 +114,23 @@ public class MonitorService extends Service implements LocationListener {
     static double latestOwnLatitude() { return latestOwnLatitude; }
     static double latestOwnLongitude() { return latestOwnLongitude; }
     static void setMapVisible(boolean visible) { mapVisible = visible; }
+    static boolean isMapLoading() { return mapVisible && mapLoading; }
+    static boolean setMapViewport(double latitude, double longitude, int radiusNm) {
+        if (Double.isNaN(latitude) || Double.isNaN(longitude)) return false;
+        int boundedRadius = boundedViewportRadiusNm(radiusNm);
+        boolean changed = Double.isNaN(mapCenterLatitude)
+                || DistanceCalculator.kilometers(mapCenterLatitude, mapCenterLongitude,
+                latitude, longitude) > Math.max(.5d, boundedRadius * NAUTICAL_MILE_KM * .03d)
+                || Math.abs(mapRadiusNm - boundedRadius) >= Math.max(1, boundedRadius / 20);
+        mapCenterLatitude = latitude;
+        mapCenterLongitude = longitude;
+        mapRadiusNm = boundedRadius;
+        return changed;
+    }
+
+    static int boundedViewportRadiusNm(int requestedRadiusNm) {
+        return Math.max(1, Math.min(EXPANDED_MAP_RADIUS_NM, requestedRadiusNm));
+    }
 
     static int requestRadiusNm(int alertRadiusKm, boolean expandedMap) {
         if (expandedMap) return EXPANDED_MAP_RADIUS_NM;
@@ -212,7 +234,8 @@ public class MonitorService extends Service implements LocationListener {
             }
         }
         if (intent != null && (ACTION_RADIUS_CHANGED.equals(intent.getAction())
-                || ACTION_SOURCES_CHANGED.equals(intent.getAction()))
+                || ACTION_SOURCES_CHANGED.equals(intent.getAction())
+                || ACTION_VIEWPORT_CHANGED.equals(intent.getAction()))
                 && pollingScheduled && worker != null) {
             worker.post(() -> {
                 worker.removeCallbacks(pollTask);
@@ -316,13 +339,18 @@ public class MonitorService extends Service implements LocationListener {
         }
 
         boolean expandedMap = mapVisible;
-        int radiusNm = requestRadiusNm(radiusKm, expandedMap);
-        double mapRadiusKm = expandedMap
-                ? EXPANDED_MAP_RADIUS_NM * NAUTICAL_MILE_KM : radiusKm;
+        boolean viewportAvailable = expandedMap && !Double.isNaN(mapCenterLatitude)
+                && !Double.isNaN(mapCenterLongitude);
+        double queryLatitude = viewportAvailable ? mapCenterLatitude : own.getLatitude();
+        double queryLongitude = viewportAvailable ? mapCenterLongitude : own.getLongitude();
+        int radiusNm = viewportAvailable ? mapRadiusNm
+                : requestRadiusNm(radiusKm, false);
+        double mapRadiusKm = radiusNm * NAUTICAL_MILE_KM;
         String localEndpoint = String.format(Locale.US,
                 "https://api.adsb.lol/v2/lat/%.5f/lon/%.5f/dist/%d",
-                own.getLatitude(), own.getLongitude(), radiusNm);
+                queryLatitude, queryLongitude, radiusNm);
 
+        if (expandedMap) mapLoading = true;
         try {
             long now = System.currentTimeMillis();
             Future<JSONArray> regionalFuture = networkPool.submit(
@@ -343,7 +371,7 @@ public class MonitorService extends Service implements LocationListener {
                         .putLong(AppPreferences.KEY_AIRPLANES_LAST_ATTEMPT_MS, now).apply();
                 String airplanesEndpoint = String.format(Locale.US,
                         "https://api.airplanes.live/v2/point/%.5f/%.5f/%d",
-                        own.getLatitude(), own.getLongitude(), radiusNm);
+                        queryLatitude, queryLongitude, radiusNm);
                 airplanesFuture = networkPool.submit(
                         () -> fetchAircraft(airplanesEndpoint, null, "airplanes.live"));
             }
@@ -352,7 +380,7 @@ public class MonitorService extends Service implements LocationListener {
                     && now - lastAdsbExchangeFetchMs >= ADSBX_REFRESH_MS) {
                 String adsbxEndpoint = String.format(Locale.US,
                         "https://api.adsbexchange.com/v2/lat/%.5f/lon/%.5f/dist/%d/",
-                        own.getLatitude(), own.getLongitude(), radiusNm);
+                        queryLatitude, queryLongitude, radiusNm);
                 adsbxFuture = networkPool.submit(
                         () -> fetchAircraft(adsbxEndpoint, adsbxKey, "adsbexchange"));
             }
@@ -411,19 +439,16 @@ public class MonitorService extends Service implements LocationListener {
                     double[] mapPosition = AircraftData.recentPosition(
                             plane, MAP_MAX_POSITION_AGE_SECONDS);
                     if (mapPosition != null) {
-                        double mapDistance = DistanceCalculator.kilometers(
+                        double queryDistance = DistanceCalculator.kilometers(
+                                queryLatitude, queryLongitude,
+                                mapPosition[0], mapPosition[1]);
+                        double ownDistance = DistanceCalculator.kilometers(
                                 own.getLatitude(), own.getLongitude(),
                                 mapPosition[0], mapPosition[1]);
-                        // The regional providers are limited to 250 NM, but ADSB.lol's /mil
-                        // response is global. Preserve those real global military contacts when
-                        // the map is open so zooming out does not discard data already received.
-                        boolean globalMilitaryOnMap = expandedMap
-                                && MilitaryClassifier.isMilitary(plane);
-                        if (!Double.isNaN(mapDistance)
-                                && (mapDistance <= mapRadiusKm || globalMilitaryOnMap)) {
+                        if (!Double.isNaN(queryDistance) && queryDistance <= mapRadiusKm) {
                             allAircraft.put(compactAircraft(plane,
                                     plane.optString("hex", "unknown").replace("~", ""),
-                                    plane.optString("flight", "").trim(), mapDistance,
+                                    plane.optString("flight", "").trim(), ownDistance,
                                     altitudeFeet(plane.opt("alt_geom"), plane.opt("alt_baro")),
                                     mapPosition[0], mapPosition[1]));
                         }
@@ -486,6 +511,8 @@ public class MonitorService extends Service implements LocationListener {
         } catch (Exception e) {
             AppPreferences.get(this).edit().putString(AppPreferences.KEY_CONNECTION, "error").apply();
             updateStatus("SIGNAL LOST", "", 0);
+        } finally {
+            mapLoading = false;
         }
     }
 

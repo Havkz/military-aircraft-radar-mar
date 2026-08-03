@@ -42,7 +42,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.9 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.10 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
@@ -102,11 +102,14 @@ final class AircraftMapPanel extends FrameLayout {
                 AppPreferences.KEY_RADIUS_KM, AppPreferences.DEFAULT_RADIUS_KM);
         String mapAircraftJson = trafficPaused
                 ? "[]" : MonitorService.latestAllAircraftJson();
+        JSONObject mapSettings = MapPreferences.json(host);
+        try { mapSettings.put("loading", MonitorService.isMapLoading()); }
+        catch (Exception ignored) { }
         String script = String.format(Locale.US, "window.marUpdate(%s,%s,%s,%d,%s)",
                 JSONObject.quote(mapAircraftJson),
                 Double.isNaN(latitude) ? "null" : Double.toString(latitude),
                 Double.isNaN(longitude) ? "null" : Double.toString(longitude),
-                radius, MapPreferences.json(host).toString());
+                radius, mapSettings.toString());
         webView.evaluateJavascript("window.marResize&&window.marResize();" + script, null);
     }
 
@@ -139,6 +142,21 @@ final class AircraftMapPanel extends FrameLayout {
             host.runOnUiThread(() -> {
                 trafficPaused = paused;
                 MonitorService.setMapVisible(pageVisible && !trafficPaused);
+                if (!paused && pageVisible && MonitorService.isRunning()) {
+                    host.startService(new Intent(host, MonitorService.class)
+                            .setAction(MonitorService.ACTION_VIEWPORT_CHANGED));
+                }
+            });
+        }
+
+        @JavascriptInterface public void setMapViewport(
+                double latitude, double longitude, int radiusNm) {
+            if (!MonitorService.setMapViewport(latitude, longitude, radiusNm)) return;
+            host.runOnUiThread(() -> {
+                if (pageVisible && !trafficPaused && MonitorService.isRunning()) {
+                    host.startService(new Intent(host, MonitorService.class)
+                            .setAction(MonitorService.ACTION_VIEWPORT_CHANGED));
+                }
             });
         }
     }
