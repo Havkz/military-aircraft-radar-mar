@@ -21,7 +21,7 @@ import java.util.concurrent.Executors;
 final class AircraftMapPanel extends FrameLayout {
     private final Activity host;
     private final WebView webView;
-    private final ExecutorService photoExecutor = Executors.newFixedThreadPool(2);
+    private final ExecutorService lookupExecutor = Executors.newFixedThreadPool(2);
     private boolean ready;
     private boolean pendingRefresh;
     private boolean pageVisible;
@@ -45,7 +45,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.19 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.20 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
@@ -164,7 +164,7 @@ final class AircraftMapPanel extends FrameLayout {
 
         @JavascriptInterface public void requestAircraftPhoto(
                 String hex, String registration, String aircraftType) {
-            photoExecutor.submit(() -> {
+            lookupExecutor.submit(() -> {
                 JSONObject result = AircraftPhotoLookup.find(registration, aircraftType);
                 String script = "window.marPhotoResult&&window.marPhotoResult("
                         + JSONObject.quote(hex == null ? "" : hex) + ","
@@ -175,11 +175,23 @@ final class AircraftMapPanel extends FrameLayout {
                 });
             });
         }
+
+        @JavascriptInterface public void requestAircraftTrace(String hex) {
+            lookupExecutor.submit(() -> {
+                org.json.JSONArray result = AircraftTraceLookup.find(hex);
+                String script = "window.marTraceResult&&window.marTraceResult("
+                        + JSONObject.quote(hex == null ? "" : hex) + ","
+                        + result.toString() + ")";
+                host.runOnUiThread(() -> {
+                    if (ready) webView.evaluateJavascript(script, null);
+                });
+            });
+        }
     }
 
     void destroy() {
         ready = false;
-        photoExecutor.shutdownNow();
+        lookupExecutor.shutdownNow();
         webView.stopLoading();
         webView.destroy();
     }

@@ -72,6 +72,9 @@ public class MonitorService extends Service implements LocationListener {
     private static final int EXPANDED_MAP_RADIUS_NM = 250;
     private static final int MAP_SUPPLEMENTAL_RADIUS_NM = 45;
     private static final long MAP_SUPPLEMENTAL_DWELL_MS = 12_000L;
+    private static final long MAP_PREFETCH_IDLE_MS = 15_000L;
+    private static final long MAP_PREFETCH_INTERVAL_MS = 10_000L;
+    private static final int MAP_PREFETCH_STAGES = 6;
     private static final double NAUTICAL_MILE_KM = 1.852d;
     private static final long WAKE_LOCK_TIMEOUT_MS = 10 * 60_000L;
     private static final long WAKE_LOCK_RENEW_MS = 9 * 60_000L;
@@ -107,10 +110,16 @@ public class MonitorService extends Service implements LocationListener {
     private boolean explicitlyStopped;
     private JSONArray cachedAdsbLolMilitary = new JSONArray();
     private JSONArray cachedAdsbLolRegional = new JSONArray();
+    private JSONArray cachedAdsbLolPrefetch = new JSONArray();
     private JSONArray cachedAirplanes = new JSONArray();
     private JSONArray cachedAdsbExchange = new JSONArray();
     private long lastAdsbLolMilitaryFetchMs;
     private long lastAdsbLolRegionalFetchMs;
+    private long lastMapPrefetchFetchMs;
+    private long lastMapPrefetchAttemptMs;
+    private long observedMapViewportChangedAtMs;
+    private int mapPrefetchStage;
+    private int cachedMapPrefetchRadiusNm;
     private long lastAirplanesFetchMs;
     private long lastAdsbExchangeFetchMs;
     private final AdaptiveBackoff adsbLolBackoff = new AdaptiveBackoff();
@@ -158,6 +167,16 @@ public class MonitorService extends Service implements LocationListener {
             boolean expandedMap, int radiusNm, long viewportStableMs) {
         return !expandedMap || radiusNm <= MAP_SUPPLEMENTAL_RADIUS_NM
                 || viewportStableMs >= MAP_SUPPLEMENTAL_DWELL_MS;
+    }
+
+    static int mapPrefetchRadiusNm(int viewportRadiusNm, int stage) {
+        int base = boundedViewportRadiusNm(viewportRadiusNm);
+        if (base >= EXPANDED_MAP_RADIUS_NM) return EXPANDED_MAP_RADIUS_NM;
+        int boundedStage = Math.max(0, Math.min(MAP_PREFETCH_STAGES - 1, stage));
+        double fraction = (boundedStage + 1d) / MAP_PREFETCH_STAGES;
+        return Math.min(EXPANDED_MAP_RADIUS_NM, Math.max(base + 1,
+                (int) Math.ceil(base * Math.pow(
+                        EXPANDED_MAP_RADIUS_NM / (double) base, fraction))));
     }
 
     private final Runnable pollTask = new Runnable() {
@@ -362,7 +381,6 @@ public class MonitorService extends Service implements LocationListener {
         double queryLongitude = viewportAvailable ? mapCenterLongitude : own.getLongitude();
         int radiusNm = viewportAvailable ? mapRadiusNm
                 : requestRadiusNm(radiusKm, false);
-        double mapRadiusKm = radiusNm * NAUTICAL_MILE_KM;
         String localEndpoint = String.format(Locale.US,
                 "https://api.adsb.lol/v2/lat/%.5f/lon/%.5f/dist/%d",
                 queryLatitude, queryLongitude, radiusNm);
@@ -370,10 +388,35 @@ public class MonitorService extends Service implements LocationListener {
         if (expandedMap) mapLoading = true;
         try {
             long now = System.currentTimeMillis();
+            if (viewportAvailable
+                    && observedMapViewportChangedAtMs != mapViewportChangedAtMs) {
+                observedMapViewportChangedAtMs = mapViewportChangedAtMs;
+                cachedAdsbLolPrefetch = new JSONArray();
+                cachedMapPrefetchRadiusNm = 0;
+                mapPrefetchStage = 0;
+                lastMapPrefetchFetchMs = 0L;
+                lastMapPrefetchAttemptMs = 0L;
+            }
+            long viewportStableMs = Math.max(0L, now - mapViewportChangedAtMs);
             boolean querySupplemental = shouldQueryMapSupplementalSources(expandedMap,
-                    radiusNm, Math.max(0L, now - mapViewportChangedAtMs));
+                    radiusNm, viewportStableMs);
             Future<JSONArray> regionalFuture = networkPool.submit(
                     () -> fetchAircraft(localEndpoint, null, "adsb.lol"));
+            Future<JSONArray> prefetchFuture = null;
+            int requestedPrefetchRadiusNm = 0;
+            if (viewportAvailable && radiusNm < EXPANDED_MAP_RADIUS_NM
+                    && viewportStableMs >= MAP_PREFETCH_IDLE_MS
+                    && adsbLolBackoff.delayMs(ADSB_LOL_BASE_REFRESH_MS, now)
+                    == ADSB_LOL_BASE_REFRESH_MS
+                    && now - lastMapPrefetchAttemptMs >= MAP_PREFETCH_INTERVAL_MS) {
+                requestedPrefetchRadiusNm = mapPrefetchRadiusNm(radiusNm, mapPrefetchStage);
+                String prefetchEndpoint = String.format(Locale.US,
+                        "https://api.adsb.lol/v2/lat/%.5f/lon/%.5f/dist/%d",
+                        queryLatitude, queryLongitude, requestedPrefetchRadiusNm);
+                lastMapPrefetchAttemptMs = now;
+                prefetchFuture = networkPool.submit(
+                        () -> fetchAircraft(prefetchEndpoint, null, "adsb.lol"));
+            }
             Future<JSONArray> militaryFuture = null;
             Future<JSONArray> airplanesFuture = null;
             Future<JSONArray> adsbxFuture = null;
@@ -413,6 +456,15 @@ public class MonitorService extends Service implements LocationListener {
                 lastAdsbLolRegionalFetchMs = now;
                 receivedLiveFeed = true;
             }
+            JSONArray prefetched = awaitOptional(prefetchFuture);
+            if (prefetched != null) {
+                cachedAdsbLolPrefetch = airbornePrefetchRing(prefetched,
+                        queryLatitude, queryLongitude, radiusNm, requestedPrefetchRadiusNm);
+                cachedMapPrefetchRadiusNm = requestedPrefetchRadiusNm;
+                lastMapPrefetchFetchMs = now;
+                mapPrefetchStage = (mapPrefetchStage + 1) % MAP_PREFETCH_STAGES;
+                receivedLiveFeed = true;
+            }
             JSONArray military = awaitOptional(militaryFuture);
             if (military != null) {
                 cachedAdsbLolMilitary = military;
@@ -439,6 +491,8 @@ public class MonitorService extends Service implements LocationListener {
             JSONArray aircraft = AircraftData.mergeByHex(
                     taggedCopy(cachedAdsbLolRegional, "ADSB.lol",
                             ageSeconds(now, lastAdsbLolRegionalFetchMs)),
+                    taggedCopy(cachedAdsbLolPrefetch, "ADSB.lol prefetch",
+                            ageSeconds(now, lastMapPrefetchFetchMs)),
                     taggedCopy(cachedAdsbLolMilitary, "ADSB.lol military",
                             ageSeconds(now, lastAdsbLolMilitaryFetchMs)),
                     taggedCopy(cachedAirplanes, "Airplanes.live",
@@ -447,6 +501,8 @@ public class MonitorService extends Service implements LocationListener {
                             ageSeconds(now, lastAdsbExchangeFetchMs)));
             JSONArray liveAircraft = new JSONArray();
             JSONArray allAircraft = new JSONArray();
+            double mapCacheRadiusKm = Math.max(radiusNm, cachedMapPrefetchRadiusNm)
+                    * NAUTICAL_MILE_KM;
             Set<String> currentlyInside = new HashSet<>();
             long scanTime = System.currentTimeMillis();
             int alertTargetCount = 0;
@@ -466,7 +522,7 @@ public class MonitorService extends Service implements LocationListener {
                         double ownDistance = DistanceCalculator.kilometers(
                                 own.getLatitude(), own.getLongitude(),
                                 mapPosition[0], mapPosition[1]);
-                        if (!Double.isNaN(queryDistance) && queryDistance <= mapRadiusKm) {
+                        if (!Double.isNaN(queryDistance) && queryDistance <= mapCacheRadiusKm) {
                             allAircraft.put(compactAircraft(plane,
                                     plane.optString("hex", "unknown").replace("~", ""),
                                     AircraftData.callsign(plane), ownDistance,
@@ -535,6 +591,28 @@ public class MonitorService extends Service implements LocationListener {
         } finally {
             mapLoading = false;
         }
+    }
+
+    static JSONArray airbornePrefetchRing(JSONArray aircraft, double latitude,
+                                           double longitude, int innerRadiusNm,
+                                           int outerRadiusNm) {
+        JSONArray result = new JSONArray();
+        if (aircraft == null || outerRadiusNm <= innerRadiusNm) return result;
+        double innerKm = innerRadiusNm * NAUTICAL_MILE_KM;
+        double outerKm = outerRadiusNm * NAUTICAL_MILE_KM;
+        for (int i = 0; i < aircraft.length(); i++) {
+            JSONObject plane = aircraft.optJSONObject(i);
+            if (plane == null || AircraftData.isOnGround(plane)) continue;
+            double[] position = AircraftData.recentPosition(
+                    plane, MAP_MAX_POSITION_AGE_SECONDS);
+            if (position == null) continue;
+            double distance = DistanceCalculator.kilometers(
+                    latitude, longitude, position[0], position[1]);
+            if (!Double.isNaN(distance) && distance > innerKm && distance <= outerKm) {
+                result.put(plane);
+            }
+        }
+        return result;
     }
 
     private JSONArray fetchAircraft(String endpoint, String apiKey, String provider)
