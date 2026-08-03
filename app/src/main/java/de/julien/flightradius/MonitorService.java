@@ -66,6 +66,8 @@ public class MonitorService extends Service implements LocationListener {
     private static final long AIRPLANES_REFRESH_MS = 180_000L;
     private static final long AIRPLANES_BUSINESS_REFRESH_MS = 1_200L;
     private static final long ADSBX_REFRESH_MS = 30_000L;
+    private static final long MAP_AIRCRAFT_CACHE_MS = 2 * 60_000L;
+    private static final int MAX_MAP_CACHE_AIRCRAFT = 5_000;
     private static final double MAP_MAX_POSITION_AGE_SECONDS = 210d;
     private static final int EXPANDED_MAP_RADIUS_NM = 250;
     private static final double NAUTICAL_MILE_KM = 1.852d;
@@ -81,6 +83,8 @@ public class MonitorService extends Service implements LocationListener {
     private static volatile double mapCenterLatitude = Double.NaN;
     private static volatile double mapCenterLongitude = Double.NaN;
     private static volatile int mapRadiusNm = 25;
+    private static final Map<String, JSONObject> mapAircraftCache = new LinkedHashMap<>();
+    private static final Map<String, Long> mapAircraftCacheTimes = new HashMap<>();
 
     private final Map<String, JSONObject> lastKnownAlerts = new HashMap<>();
     private final Map<String, JSONObject> sessionHistory = new LinkedHashMap<>();
@@ -110,7 +114,10 @@ public class MonitorService extends Service implements LocationListener {
     private final AdaptiveBackoff airplanesBackoff = new AdaptiveBackoff();
 
     static boolean isRunning() { return running; }
-    static String latestAllAircraftJson() { return latestAllAircraftJson; }
+    static synchronized String latestAllAircraftJson() {
+        latestAllAircraftJson = mapAircraftCacheJson(System.currentTimeMillis()).toString();
+        return latestAllAircraftJson;
+    }
     static double latestOwnLatitude() { return latestOwnLatitude; }
     static double latestOwnLongitude() { return latestOwnLongitude; }
     static void setMapVisible(boolean visible) { mapVisible = visible; }
@@ -270,7 +277,7 @@ public class MonitorService extends Service implements LocationListener {
                     .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
                     .putString(AppPreferences.KEY_CONNECTION, "standby").apply();
             AppPreferences.clearLiveTelemetry(this);
-            latestAllAircraftJson = "[]";
+            clearMapAircraftCache();
         }
         if (locationManager != null) locationManager.removeUpdates(this);
         if (worker != null) worker.removeCallbacksAndMessages(null);
@@ -504,7 +511,7 @@ public class MonitorService extends Service implements LocationListener {
                 }
             }
             publishSessionHistory();
-            latestAllAircraftJson = allAircraft.toString();
+            latestAllAircraftJson = updateMapAircraftCache(allAircraft, scanTime).toString();
             publishTelemetry("connected", alertTargetCount, liveAircraft, nearestCallsign,
                     nearestDistanceKm, nearestAltitudeFt);
             updateStatus("LIVE // " + nowTime(), "", alertTargetCount);
@@ -551,6 +558,57 @@ public class MonitorService extends Service implements LocationListener {
         } finally {
             if (connection != null) connection.disconnect();
         }
+    }
+
+    static synchronized JSONArray updateMapAircraftCache(JSONArray freshAircraft, long now) {
+        if (freshAircraft != null) {
+            for (int i = 0; i < freshAircraft.length(); i++) {
+                JSONObject aircraft = freshAircraft.optJSONObject(i);
+                if (aircraft == null) continue;
+                String hex = aircraft.optString("hex", "").replace("~", "")
+                        .trim().toLowerCase(Locale.US);
+                if (hex.isEmpty() || "unknown".equals(hex)) continue;
+                mapAircraftCache.remove(hex);
+                mapAircraftCache.put(hex, aircraft);
+                mapAircraftCacheTimes.put(hex, now);
+            }
+        }
+        while (mapAircraftCache.size() > MAX_MAP_CACHE_AIRCRAFT) {
+            String oldest = mapAircraftCache.keySet().iterator().next();
+            mapAircraftCache.remove(oldest);
+            mapAircraftCacheTimes.remove(oldest);
+        }
+        return mapAircraftCacheJson(now);
+    }
+
+    private static JSONArray mapAircraftCacheJson(long now) {
+        JSONArray result = new JSONArray();
+        List<String> expired = new ArrayList<>();
+        for (Map.Entry<String, JSONObject> entry : mapAircraftCache.entrySet()) {
+            long updated = mapAircraftCacheTimes.containsKey(entry.getKey())
+                    ? mapAircraftCacheTimes.get(entry.getKey()) : 0L;
+            long ageMs = Math.max(0L, now - updated);
+            if (ageMs >= MAP_AIRCRAFT_CACHE_MS) {
+                expired.add(entry.getKey());
+                continue;
+            }
+            try {
+                JSONObject copy = new JSONObject(entry.getValue().toString());
+                copy.put("map_cache_age_seconds", ageMs / 1000d);
+                result.put(copy);
+            } catch (Exception ignored) { }
+        }
+        for (String hex : expired) {
+            mapAircraftCache.remove(hex);
+            mapAircraftCacheTimes.remove(hex);
+        }
+        return result;
+    }
+
+    private static synchronized void clearMapAircraftCache() {
+        mapAircraftCache.clear();
+        mapAircraftCacheTimes.clear();
+        latestAllAircraftJson = "[]";
     }
 
     private void increaseRateLimitBackoff(String provider) {
