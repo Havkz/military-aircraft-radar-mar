@@ -408,6 +408,11 @@ public class MainActivity extends Activity {
         super.onPause();
     }
 
+    @Override protected void onDestroy() {
+        if (mapPanel != null) mapPanel.destroy();
+        super.onDestroy();
+    }
+
     @Override protected void onSaveInstanceState(Bundle state) {
         state.putInt("page", currentPage);
         super.onSaveInstanceState(state);

@@ -56,10 +56,22 @@ The Android map loads Leaflet 1.9.4 from unpkg and requests standard OpenStreetM
 
 - OpenStreetMap tile usage policy: https://operations.osmfoundation.org/policies/tiles/
 - Leaflet: https://leafletjs.com/
+- Leaflet BSD 2-Clause License: https://github.com/Leaflet/Leaflet/blob/main/LICENSE
+
+## Aircraft photo-search links
+
+Planespotters.net and planespotting.be are optional external destinations opened only after an explicit tap in the aircraft information panel. MAR passes a registration search term but does not retrieve, embed, scrape, cache, or redistribute their photographs or site content. Their names, photographs, databases, and trademarks remain the property of their respective owners. No affiliation, sponsorship, or endorsement is claimed.
+
+- Planespotters.net: https://www.planespotters.net/
+- Planespotting.be: https://www.planespotting.be/
+
+## Map design and local features
+
+MAR's map controls, filters, tracks, bookmarks, measurement tools, and information panels are original project code implemented with Leaflet. Reference screenshots used during development are not part of the source tree, application package, commits, or releases. No Airplanes.live Globe source code, imagery, icons, map tiles, or website assets are included or copied.
 
 ## Trademarks and independence
 
-ADSB.lol, Flightradar24, ADS-B Exchange, Apple, Android, Google, and all other product or service names are the property of their respective owners. Their appearance in MAR is descriptive and does not imply affiliation or endorsement.
+ADSB.lol, Airplanes.live, Flightradar24, ADS-B Exchange, OpenStreetMap, Leaflet, Planespotters.net, Planespotting.be, Apple, Android, Google, and all other product or service names are the property of their respective owners. Their appearance in MAR is descriptive and does not imply affiliation or endorsement.
 
 ## Safety
 

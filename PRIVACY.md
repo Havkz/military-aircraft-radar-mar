@@ -8,7 +8,7 @@ Military Aircraft Radar (MAR) is an open-source Android and iOS application. It 
 
 MAR processes the device's current location, the configured monitoring radius, aircraft telemetry returned by the data provider, notification state, and app preferences. These values are used to perform nearby-aircraft monitoring and render the app's live views.
 
-App preferences and recent aircraft state are stored locally in platform-managed application storage. An optional ADS-B Exchange API key is stored in Android's private no-backup directory. These values can be removed by clearing the Android app's data or uninstalling the app.
+App preferences, recent aircraft state, map display options, and map bookmarks are stored locally in platform-managed application or WebView storage. Search terms and aircraft filters remain on the device. An optional ADS-B Exchange API key is stored in Android's private no-backup directory. These values can be removed by clearing the Android app's data or uninstalling the app.
 
 ## Data sent to third parties
 
@@ -17,6 +17,8 @@ While monitoring is active, Android sends the device latitude, longitude, and se
 When the Android map tab is first opened, its WebView loads Leaflet 1.9.4 from the unpkg CDN and requests OpenStreetMap tiles for the visible area. Those services therefore receive the requested resource or tile coordinates, network metadata, and IP address. MAR does not prefetch map areas for offline use.
 
 When the user chooses to open an aircraft in Flightradar24 or ADS-B Exchange, Android opens the selected service's app or website with aircraft-identifying or map-position information in the link. Those services process data under their own terms and privacy policies.
+
+If the user explicitly opens a photo-search link from an aircraft infoblock, MAR sends the aircraft registration as a search parameter to planespotters.net or planespotting.be. MAR does not automatically load, scrape, cache, or redistribute photographs from either service.
 
 Official provider information:
 
@@ -27,6 +29,8 @@ Official provider information:
 - unpkg privacy policy: https://www.cloudflare.com/privacypolicy/
 - Flightradar24 Terms of Service: https://www.flightradar24.com/terms-of-service
 - ADS-B Exchange / JETNET Terms of Use: https://www.jetnet.com/legal/terms-of-use
+- Planespotters.net: https://www.planespotters.net/
+- Planespotting.be: https://www.planespotting.be/
 
 ## Permissions
 

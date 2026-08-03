@@ -16,6 +16,7 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
@@ -72,6 +73,7 @@ public class MonitorService extends Service implements LocationListener {
 
     private final Map<String, JSONObject> lastKnownAlerts = new HashMap<>();
     private final Map<String, JSONObject> sessionHistory = new LinkedHashMap<>();
+    private final Map<String, Double> geoidOffsetFeet = new HashMap<>();
     private final Map<String, Long> notificationSuppressedUntil = new ConcurrentHashMap<>();
     private final Set<Integer> aircraftNotificationIds = Collections.newSetFromMap(
             new ConcurrentHashMap<Integer, Boolean>());
@@ -642,10 +644,13 @@ public class MonitorService extends Service implements LocationListener {
                                        double latitude, double longitude) throws Exception {
         JSONObject item = new JSONObject();
         item.put("hex", hex);
+        item.put("non_icao", plane.optString("hex", "").startsWith("~"));
         item.put("callsign", callsign);
         item.put("display_name", AircraftData.displayName(plane));
         item.put("registration", plane.optString("r", ""));
         item.put("type", plane.optString("t", ""));
+        item.put("data_source", plane.optString("type", ""));
+        item.put("db_flags", plane.optInt("dbFlags", 0));
         item.put("description", plane.optString("desc",
                 plane.optString("typeDescription", "")));
         item.put("category", plane.optString("category", ""));
@@ -655,14 +660,71 @@ public class MonitorService extends Service implements LocationListener {
                 ? new JSONArray() : plane.optJSONArray("sources"));
         item.put("distance_km", distanceKm);
         item.put("altitude_ft", Double.isNaN(altitudeFt) ? JSONObject.NULL : altitudeFt);
+        item.put("barometric_altitude_ft", altitudeValueOrNull(plane.opt("alt_baro")));
+        item.put("geometric_altitude_ft", altitudeValueOrNull(plane.opt("alt_geom")));
+        item.put("geometric_msl_altitude_ft",
+                geometricMslAltitudeOrNull(plane, latitude, longitude));
+        item.put("qnh_hpa", finiteValueOrNull(plane.optDouble("nav_qnh", Double.NaN)));
         item.put("speed_knots", plane.optDouble("gs", 0));
         item.put("track", plane.optDouble("track", 0));
+        item.put("vertical_rate", plane.optDouble("geom_rate",
+                plane.optDouble("baro_rate", 0)));
+        item.put("rssi", finiteValueOrNull(plane.optDouble("rssi", Double.NaN)));
+        item.put("messages", plane.optLong("messages", 0L));
         item.put("squawk", plane.optString("squawk", ""));
         item.put("lat", latitude);
         item.put("lon", longitude);
         item.put("seen", plane.optDouble("seen", 0));
         item.put("emergency", plane.optString("emergency", "none"));
         return item;
+    }
+
+    private Object altitudeValueOrNull(Object value) {
+        double altitude = altitudeValueFeet(value);
+        return Double.isNaN(altitude) ? JSONObject.NULL : altitude;
+    }
+
+    private Object finiteValueOrNull(double value) {
+        return Double.isNaN(value) || Double.isInfinite(value) ? JSONObject.NULL : value;
+    }
+
+    private Object geometricMslAltitudeOrNull(JSONObject plane, double latitude,
+                                              double longitude) {
+        double geometricFeet = altitudeValueFeet(plane.opt("alt_geom"));
+        if (Double.isNaN(geometricFeet)
+                || !AppPreferences.get(this).getBoolean(
+                MapPreferences.EGM_CONVERSION, false)
+                || Build.VERSION.SDK_INT < 34) return JSONObject.NULL;
+        String cell = Math.round(latitude * 10d) + ":" + Math.round(longitude * 10d);
+        Double cachedOffset = geoidOffsetFeet.get(cell);
+        if (cachedOffset != null) return geometricFeet + cachedOffset;
+        try {
+            double mslFeet = Api34AltitudeConverter.toMslFeet(
+                    this, latitude, longitude, geometricFeet);
+            if (geoidOffsetFeet.size() >= 512) geoidOffsetFeet.clear();
+            geoidOffsetFeet.put(cell, mslFeet - geometricFeet);
+            return mslFeet;
+        } catch (Exception ignored) {
+            return JSONObject.NULL;
+        }
+    }
+
+    @android.annotation.TargetApi(34)
+    private static final class Api34AltitudeConverter {
+        private static final android.location.altitude.AltitudeConverter CONVERTER =
+                new android.location.altitude.AltitudeConverter();
+
+        static synchronized double toMslFeet(android.content.Context context,
+                                             double latitude, double longitude,
+                                             double geometricFeet) throws Exception {
+            Location location = new Location("aircraft");
+            location.setLatitude(latitude);
+            location.setLongitude(longitude);
+            location.setAltitude(geometricFeet * 0.3048d);
+            CONVERTER.addMslAltitudeToLocation(context, location);
+            if (!location.hasMslAltitude()) throw new IllegalStateException("No MSL altitude");
+            return location.getMslAltitudeMeters() / 0.3048d;
+        }
     }
 
     private void loadSessionHistory() {

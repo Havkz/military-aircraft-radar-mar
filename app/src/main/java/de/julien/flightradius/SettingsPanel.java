@@ -16,6 +16,7 @@ import android.view.Window;
 import android.text.InputType;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -80,6 +81,8 @@ final class SettingsPanel extends ScrollView {
         addAdsbExchangeKey(root);
         addSwitch(root, L10n.t(host, "vibration"));
 
+        addMapSettings(root);
+
         section(root, L10n.t(host, "information"));
         LinearLayout info = card();
         info.setOrientation(LinearLayout.VERTICAL);
@@ -139,25 +142,26 @@ final class SettingsPanel extends ScrollView {
     }
 
     private void addAdsbExchangeKey(LinearLayout root) {
-        LinearLayout row = settingRow("ADS-B Exchange API key");
+        LinearLayout row = settingRow(MapL10n.t(host, "adsbx_key"));
         TextView value = (TextView) row.getChildAt(1);
         value.setText(ProviderCredentials.hasAdsbExchangeKey(host)
-                ? "Configured  ✓" : "Not configured  ›");
+                ? MapL10n.t(host, "configured") + "  ✓"
+                : MapL10n.t(host, "not_configured") + "  ›");
         row.setOnClickListener(view -> {
             EditText input = new EditText(host);
             input.setSingleLine(true);
-            input.setHint("Official ADS-B Exchange API key");
+            input.setHint(MapL10n.t(host, "adsbx_key"));
             input.setInputType(InputType.TYPE_CLASS_TEXT
                     | InputType.TYPE_TEXT_VARIATION_PASSWORD);
             input.setText(ProviderCredentials.adsbExchangeKey(host));
             input.setSelectAllOnFocus(true);
             AlertDialog dialog = new AlertDialog.Builder(host)
-                    .setTitle("ADS-B Exchange API key")
-                    .setMessage("Optional. Stored only in the app's private, non-backed-up storage.")
+                    .setTitle(MapL10n.t(host, "adsbx_key"))
+                    .setMessage(MapL10n.t(host, "key_private"))
                     .setView(input)
                     .setNegativeButton(android.R.string.cancel, null)
-                    .setNeutralButton("Remove", null)
-                    .setPositiveButton("Save", null)
+                    .setNeutralButton(MapL10n.t(host, "remove"), null)
+                    .setPositiveButton(MapL10n.t(host, "save"), null)
                     .create();
             dialog.setOnShowListener(ignored -> {
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
@@ -172,18 +176,139 @@ final class SettingsPanel extends ScrollView {
         root.addView(row, cardParams());
     }
 
+    private void addMapSettings(LinearLayout root) {
+        section(root, MapL10n.t(host, "general"));
+        addScale(root, MapL10n.t(host, "text_size"),
+                MapPreferences.TEXT_SCALE, 75, 150, 100);
+        addScale(root, MapL10n.t(host, "icon_size"),
+                MapPreferences.ICON_SCALE, 70, 180, 100);
+
+        section(root, MapL10n.t(host, "map_appearance"));
+        addMapSwitch(root, MapL10n.t(host, "dark_map"),
+                MapPreferences.DARK, true);
+        addMapSwitch(root, MapL10n.t(host, "darker_colors"),
+                MapPreferences.DARKER, false);
+        addMapSwitch(root, MapL10n.t(host, "dim_map"),
+                MapPreferences.DIM, true);
+        addMapSwitch(root, MapL10n.t(host, "colored_aircraft"),
+                MapPreferences.COLORED_PLANES, true);
+        addMapSwitch(root, MapL10n.t(host, "colored_tracks"),
+                MapPreferences.COLORED_TRAILS, true);
+        addMapSwitch(root, MapL10n.t(host, "hardware_tracks"),
+                MapPreferences.HARDWARE_TRACKS, true);
+
+        section(root, MapL10n.t(host, "labels_altitude"));
+        addMapSwitch(root, MapL10n.t(host, "label_units"),
+                MapPreferences.LABEL_UNITS, true);
+        addMapSwitch(root, MapL10n.t(host, "smaller_labels"),
+                MapPreferences.SMALL_LABELS, true);
+        addMapSwitch(root, MapL10n.t(host, "geometric_alt"),
+                MapPreferences.GEOMETRIC_ALTITUDE, false);
+        addMapSwitch(root, MapL10n.t(host, "egm_conversion"),
+                MapPreferences.EGM_CONVERSION, false);
+        addMapSwitch(root, MapL10n.t(host, "qnh_correct"),
+                MapPreferences.QNH_CORRECTION, false);
+        addMapSwitch(root, MapL10n.t(host, "track_utc"),
+                MapPreferences.TRACK_UTC, true);
+
+        section(root, MapL10n.t(host, "tracks_history"));
+        addMapSwitch(root, MapL10n.t(host, "last_leg"),
+                MapPreferences.LAST_LEG_ONLY, true);
+        addMapSwitch(root, MapL10n.t(host, "altitude_chart"),
+                MapPreferences.ALTITUDE_CHART, true);
+        addMapSwitch(root, MapL10n.t(host, "keep_faded"),
+                MapPreferences.KEEP_FADED, false);
+
+        section(root, MapL10n.t(host, "info_panel"));
+        addMapSwitch(root, MapL10n.t(host, "enable_info"),
+                MapPreferences.INFOBLOCK, true);
+        addMapSwitch(root, MapL10n.t(host, "wide_info"),
+                MapPreferences.WIDE_INFOBLOCK, false);
+        addMapSwitch(root, MapL10n.t(host, "auto_select"),
+                MapPreferences.AUTO_SELECT, false);
+        addMapSwitch(root, MapL10n.t(host, "pictures_planespotters"),
+                MapPreferences.PICTURES_PLANESPOTTERS, true);
+        addMapSwitch(root, MapL10n.t(host, "pictures_planespotting"),
+                MapPreferences.PICTURES_PLANESPOTTING, false);
+
+        section(root, MapL10n.t(host, "traffic_privacy"));
+        addMapSwitch(root, MapL10n.t(host, "ground_vehicles"),
+                MapPreferences.GROUND_VEHICLES, true);
+        addMapSwitch(root, MapL10n.t(host, "non_icao"),
+                MapPreferences.NON_ICAO, true);
+        addMapSwitch(root, MapL10n.t(host, "update_gps"),
+                MapPreferences.UPDATE_GPS, true);
+
+        section(root, MapL10n.t(host, "advanced"));
+        addMapSwitch(root, MapL10n.t(host, "debug_tracks"),
+                MapPreferences.DEBUG_TRACKS, false);
+        addMapSwitch(root, MapL10n.t(host, "bypass_filters"),
+                MapPreferences.DEBUG_SHOW_ALL, false);
+        TextView reset = label(MapL10n.t(host, "reset_all").toUpperCase(),
+                13, MARColors.ORANGE, Typeface.BOLD);
+        reset.setGravity(Gravity.CENTER);
+        reset.setPadding(dp(14), dp(17), dp(14), dp(17));
+        reset.setBackground(card().getBackground());
+        reset.setOnClickListener(view -> {
+            MapPreferences.reset(host);
+            recreate.run();
+        });
+        root.addView(reset, cardParams());
+    }
+
+    private void addMapSwitch(LinearLayout root, String title, String key,
+                              boolean defaultValue) {
+        LinearLayout row = card();
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(label(title, 14, text, Typeface.BOLD),
+                new LinearLayout.LayoutParams(0, -2, 1f));
+        Switch toggle = new Switch(host);
+        toggle.setChecked(prefs.getBoolean(key, defaultValue));
+        toggle.setThumbTintList(android.content.res.ColorStateList.valueOf(MARColors.BLUE));
+        toggle.setOnCheckedChangeListener((button, checked) ->
+                prefs.edit().putBoolean(key, checked).apply());
+        row.addView(toggle);
+        root.addView(row, cardParams());
+    }
+
+    private void addScale(LinearLayout root, String title, String key,
+                          int minimum, int maximum, int defaultValue) {
+        LinearLayout row = card();
+        row.setOrientation(LinearLayout.VERTICAL);
+        TextView value = label(title, 14, text, Typeface.BOLD);
+        row.addView(value);
+        SeekBar seek = new SeekBar(host);
+        seek.setMax(maximum - minimum);
+        seek.setProgress(Math.round(prefs.getFloat(key, defaultValue / 100f) * 100) - minimum);
+        seek.setProgressTintList(android.content.res.ColorStateList.valueOf(MARColors.BLUE));
+        seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                int percent = progress + minimum;
+                value.setText(title + "  ·  " + percent + "%");
+                if (fromUser) prefs.edit().putFloat(key, percent / 100f).apply();
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) { }
+        });
+        value.setText(title + "  ·  " + (seek.getProgress() + minimum) + "%");
+        row.addView(seek, new LinearLayout.LayoutParams(-1, dp(42)));
+        root.addView(row, cardParams());
+    }
+
+
     private boolean storeAdsbExchangeKey(String key, TextView value) {
         try {
             ProviderCredentials.setAdsbExchangeKey(host, key);
             value.setText(ProviderCredentials.hasAdsbExchangeKey(host)
-                    ? "Configured  ✓" : "Not configured  ›");
+                    ? MapL10n.t(host, "configured") + "  ✓"
+                    : MapL10n.t(host, "not_configured") + "  ›");
             if (prefs.getBoolean(AppPreferences.KEY_RUNNING, false)) {
                 host.startService(new Intent(host, MonitorService.class)
                         .setAction(MonitorService.ACTION_SOURCES_CHANGED));
             }
             return true;
         } catch (Exception error) {
-            android.widget.Toast.makeText(host, "Could not store API key",
+            android.widget.Toast.makeText(host, MapL10n.t(host, "key_error"),
                     android.widget.Toast.LENGTH_LONG).show();
             return false;
         }
@@ -276,9 +401,7 @@ final class SettingsPanel extends ScrollView {
         TextView data = label(L10n.t(host, "legal_data"), 12, text, Typeface.NORMAL);
         data.setLineSpacing(0, 1.25f);
         legal.addView(data);
-        String providerNotice = AppPreferences.isGerman(host)
-                ? "MAR kombiniert ADSB.lol und Airplanes.live. ADS-B Exchange wird nur mit einem von dir hinterlegten offiziellen API-Key abgefragt. Flightradar24 bleibt ein externer Link. Keine Zugehörigkeit oder Empfehlung durch die Anbieter."
-                : "MAR combines ADSB.lol and Airplanes.live. ADS-B Exchange is queried only with an official API key you provide. Flightradar24 remains an external link. No provider affiliation or endorsement.";
+        String providerNotice = MapL10n.t(host, "provider_notice");
         TextView trackers = label(providerNotice,
                 12, muted, Typeface.NORMAL);
         trackers.setLineSpacing(0, 1.25f);
@@ -290,6 +413,12 @@ final class SettingsPanel extends ScrollView {
                 "https://airplanes.live/api-guide/");
         addLegalLink(legal, "OpenStreetMap tile policy",
                 "https://operations.osmfoundation.org/policies/tiles/");
+        addLegalLink(legal, "Leaflet BSD 2-Clause License",
+                "https://github.com/Leaflet/Leaflet/blob/main/LICENSE");
+        addLegalLink(legal, "Planespotters.net",
+                "https://www.planespotters.net/");
+        addLegalLink(legal, "Planespotting.be",
+                "https://www.planespotting.be/");
         addLegalLink(legal, "Flightradar24 Terms",
                 "https://www.flightradar24.com/terms-of-service");
         addLegalLink(legal, "ADS-B Exchange Terms",

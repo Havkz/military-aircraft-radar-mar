@@ -1,10 +1,13 @@
 package de.julien.flightradius;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Color;
+import android.net.Uri;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.WebResourceRequest;
 import android.widget.FrameLayout;
 
 import org.json.JSONObject;
@@ -26,7 +29,7 @@ final class AircraftMapPanel extends FrameLayout {
         webView.setBackgroundColor(Color.TRANSPARENT);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(false);
+        settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
@@ -37,6 +40,17 @@ final class AircraftMapPanel extends FrameLayout {
             @Override public void onPageFinished(WebView view, String url) {
                 ready = true;
                 if (pendingRefresh) refresh();
+            }
+
+            @Override public boolean shouldOverrideUrlLoading(
+                    WebView view, WebResourceRequest request) {
+                Uri uri = request.getUrl();
+                if ("file".equalsIgnoreCase(uri.getScheme())) return false;
+                if (!"https".equalsIgnoreCase(uri.getScheme())
+                        && !"http".equalsIgnoreCase(uri.getScheme())) return true;
+                try { host.startActivity(new Intent(Intent.ACTION_VIEW, uri)); }
+                catch (Exception ignored) { }
+                return true;
             }
         });
         addView(webView, new LayoutParams(-1, -1));
@@ -63,7 +77,12 @@ final class AircraftMapPanel extends FrameLayout {
                 JSONObject.quote(MonitorService.latestAllAircraftJson()),
                 Double.isNaN(latitude) ? "null" : Double.toString(latitude),
                 Double.isNaN(longitude) ? "null" : Double.toString(longitude),
-                radius, AppPreferences.isDark(host) ? "true" : "false");
+                radius, MapPreferences.json(host).toString());
         webView.evaluateJavascript(script, null);
+    }
+
+    void destroy() {
+        webView.stopLoading();
+        webView.destroy();
     }
 }

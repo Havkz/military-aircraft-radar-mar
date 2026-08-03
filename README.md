@@ -77,7 +77,9 @@ Some aircraft may not be visible on Flightradar24. ADS-B Exchange can therefore 
 
 - Merged nearby-aircraft monitoring using ADSB.lol and Airplanes.live
 - Optional authenticated ADS-B Exchange feed using the user's own official API key
-- Interactive OpenStreetMap aircraft map with provider deduplication by ICAO hex address
+- Interactive OpenStreetMap aircraft map with provider deduplication by ICAO hex address and a visible own-location marker without a radius circle
+- Map search, source/type/database filters, military-only mode, tracks, follow/isolate, multi-select, distance measurement, local bookmarks, and detailed aircraft infoblocks
+- Configurable map colors, labels, icon sizing, altitude source/QNH correction, track rendering, faded contacts, ground vehicles, non-ICAO targets, and optional registration photo-search links
 - Adjustable 10–300 km radius with a marked 20–30 km recommendation
 - One-second ADSB.lol refresh with automatic 429 backoff in 0.5-second steps
 - Continuously updated per-aircraft notifications
@@ -89,7 +91,7 @@ Some aircraft may not be visible on Flightradar24. ADS-B Exchange can therefore 
 - OLED dark, light, and system themes
 - Aviation units (NM / ft) and metric units (km / m)
 - English, Mandarin Chinese, Hindi, Spanish, French, Arabic, Bengali, Portuguese, Russian, and German
-- Automatic system-language selection and right-to-left layout for Arabic
+- Full map and settings localization in English, Mandarin Chinese, Hindi, Spanish, French, Arabic, Bengali, Portuguese, Russian, and German, with right-to-left layout for Arabic
 - No account, analytics, advertising, or developer-operated backend
 
 ## Technical overview
