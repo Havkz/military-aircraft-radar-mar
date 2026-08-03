@@ -10,7 +10,6 @@ final class AppPreferences {
     static final String PREFS = "monitor_settings";
     static final String KEY_RADIUS_KM = "radius_km";
     static final String KEY_THEME = "theme";
-    static final String KEY_LANGUAGE = "language";
     static final String KEY_UNITS = "units";
     static final String KEY_REFRESH_SECONDS = "refresh_seconds";
     static final String KEY_VIBRATION = "vibration";
@@ -38,13 +37,6 @@ final class AppPreferences {
 
     static SharedPreferences get(Context context) {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-    }
-
-    static boolean isGerman(Context context) {
-        String selected = get(context).getString(KEY_LANGUAGE, "system");
-        if ("de".equals(selected)) return true;
-        if ("en".equals(selected)) return false;
-        return Locale.getDefault().getLanguage().equals("de");
     }
 
     static boolean isDark(Context context) {

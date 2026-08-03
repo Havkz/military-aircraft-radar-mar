@@ -94,7 +94,7 @@ final class MapPreferences {
             result.put("debugShowAll", preferences.getBoolean(DEBUG_SHOW_ALL, false));
             result.put("metric", AppPreferences.usesMetric(context));
             result.put("strings", MapL10n.json(context));
-            result.put("rtl", "ar".equals(L10n.language(context)));
+            result.put("rtl", false);
         } catch (Exception ignored) { }
         return result;
     }

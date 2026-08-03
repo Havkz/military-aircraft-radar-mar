@@ -69,10 +69,6 @@ public class SettingsActivity extends Activity {
         addDropdown(root, L10n.t(this, "theme"), AppPreferences.KEY_THEME,
                 new String[]{"oled", "light", "system"},
                 new String[]{L10n.t(this, "oled_dark"), L10n.t(this, "light"), L10n.t(this, "system")}, true);
-        String[] languageNames = L10n.NAMES.clone();
-        languageNames[0] = L10n.t(this, "system");
-        addDropdown(root, L10n.t(this, "language"), AppPreferences.KEY_LANGUAGE,
-                L10n.CODES, languageNames, true);
         addDropdown(root, L10n.t(this, "units"), AppPreferences.KEY_UNITS,
                 new String[]{"aviation", "metric"},
                 new String[]{L10n.t(this, "aviation_units"), L10n.t(this, "metric_units")}, false);

@@ -546,7 +546,6 @@ public class MainActivity extends Activity {
 
     private String signature() {
         return preferences.getString(AppPreferences.KEY_THEME, "oled") + "|"
-                + preferences.getString(AppPreferences.KEY_LANGUAGE, "system") + "|"
                 + preferences.getString(AppPreferences.KEY_UNITS, "aviation");
     }
 

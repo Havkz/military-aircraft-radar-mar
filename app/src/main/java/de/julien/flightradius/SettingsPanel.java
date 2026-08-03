@@ -64,10 +64,6 @@ final class SettingsPanel extends ScrollView {
                 new String[]{"oled", "light", "system"},
                 new String[]{L10n.t(host, "oled_dark"), L10n.t(host, "light"),
                         L10n.t(host, "system")}, true);
-        String[] languages = L10n.NAMES.clone();
-        languages[0] = L10n.t(host, "system");
-        addDropdown(root, L10n.t(host, "language"), AppPreferences.KEY_LANGUAGE,
-                L10n.CODES, languages, true);
         addDropdown(root, L10n.t(host, "units"), AppPreferences.KEY_UNITS,
                 new String[]{"aviation", "metric"},
                 new String[]{L10n.t(host, "aviation_units"), L10n.t(host, "metric_units")}, true);
@@ -420,14 +416,9 @@ final class SettingsPanel extends ScrollView {
                 MapPreferences.EGM_CONVERSION, false);
         addMapSwitch(root, MapL10n.t(host, "qnh_correct"),
                 MapPreferences.QNH_CORRECTION, false);
-        addMapSwitch(root, MapL10n.t(host, "historic_track_utc"),
-                MapPreferences.HISTORIC_TRACK_UTC, true);
-
         section(root, MapL10n.t(host, "tracks_history"));
         addMapSwitch(root, MapL10n.t(host, "last_leg"),
                 MapPreferences.LAST_LEG_ONLY, true);
-        addMapSwitch(root, MapL10n.t(host, "altitude_chart"),
-                MapPreferences.ALTITUDE_CHART, true);
         addMapSwitch(root, MapL10n.t(host, "keep_faded"),
                 MapPreferences.KEEP_FADED, false);
 

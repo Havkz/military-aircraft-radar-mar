@@ -742,6 +742,10 @@ public class MonitorService extends Service implements LocationListener {
         item.put("callsign", callsign);
         item.put("display_name", AircraftData.displayName(plane));
         item.put("registration", plane.optString("r", ""));
+        item.put("country", plane.optString("country",
+                plane.optString("country_name", "")));
+        item.put("operator", plane.optString("ownOp",
+                plane.optString("operator", "")));
         item.put("type", plane.optString("t", ""));
         item.put("data_source", plane.optString("type", ""));
         item.put("db_flags", plane.optInt("dbFlags", 0));
@@ -770,11 +774,17 @@ public class MonitorService extends Service implements LocationListener {
                 finiteValueOrNull(plane.optDouble("true_heading", Double.NaN)));
         item.put("magnetic_heading",
                 finiteValueOrNull(plane.optDouble("mag_heading", Double.NaN)));
+        item.put("magnetic_declination", finiteValueOrNull(plane.optDouble(
+                "mag_declination", plane.optDouble("mag_decl", Double.NaN))));
         item.put("track_rate",
                 finiteValueOrNull(plane.optDouble("track_rate", Double.NaN)));
         item.put("roll", finiteValueOrNull(plane.optDouble("roll", Double.NaN)));
         item.put("vertical_rate", plane.optDouble("geom_rate",
                 plane.optDouble("baro_rate", 0)));
+        item.put("barometric_rate", finiteValueOrNull(
+                plane.optDouble("baro_rate", Double.NaN)));
+        item.put("geometric_rate", finiteValueOrNull(
+                plane.optDouble("geom_rate", Double.NaN)));
         item.put("selected_altitude_ft", finiteValueOrNull(plane.optDouble(
                 "nav_altitude_mcp", plane.optDouble("nav_altitude_fms", Double.NaN))));
         item.put("selected_heading",
@@ -791,6 +801,10 @@ public class MonitorService extends Service implements LocationListener {
                 finiteValueOrNull(plane.optDouble("tat", Double.NaN)));
         item.put("rssi", finiteValueOrNull(plane.optDouble("rssi", Double.NaN)));
         item.put("messages", plane.optLong("messages", 0L));
+        item.put("message_rate", finiteValueOrNull(plane.optDouble("msg_rate",
+                plane.optDouble("message_rate", Double.NaN))));
+        item.put("receivers", plane.optInt("receiver_count",
+                plane.optInt("receivers", 0)));
         item.put("adsb_version", plane.has("version")
                 ? plane.optInt("version", -1) : JSONObject.NULL);
         item.put("nac_p", plane.has("nac_p")
@@ -808,6 +822,8 @@ public class MonitorService extends Service implements LocationListener {
         item.put("seen", plane.optDouble("seen", 0));
         item.put("seen_position", plane.optDouble("seen_pos",
                 plane.optDouble("seen", 0)));
+        item.put("position_epoch", Math.round(System.currentTimeMillis() / 1000d
+                - plane.optDouble("seen_pos", plane.optDouble("seen", 0))));
         item.put("emergency", plane.optString("emergency", "none"));
         item.put("alert", plane.has("alert") ? plane.optInt("alert", 0) : JSONObject.NULL);
         item.put("spi", plane.has("spi") ? plane.optInt("spi", 0) : JSONObject.NULL);
