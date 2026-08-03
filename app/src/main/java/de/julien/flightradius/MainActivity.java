@@ -421,7 +421,14 @@ public class MainActivity extends Activity {
     }
 
     private void updateMapVisibility() {
-        MonitorService.setMapVisible(activityResumed && currentPage == 1);
+        boolean mapVisible = activityResumed && currentPage == 1;
+        MonitorService.setMapVisible(mapVisible);
+        if (mapVisible && !MonitorService.isRunning()) {
+            // The map is a live-data feature, not merely a viewer for an already running
+            // alert service. Starting it here also recovers after Android stops the service
+            // during an APK update.
+            requestAndStart();
+        }
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {

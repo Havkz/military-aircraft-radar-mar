@@ -1,9 +1,11 @@
 package de.julien.flightradius;
 
+import android.Manifest;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.app.Activity;
 import android.app.NotificationManager;
+import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -79,12 +81,14 @@ public class SplashActivity extends Activity {
         android.content.SharedPreferences prefs = AppPreferences.get(this);
         int previousVersion = prefs.getInt(AppPreferences.KEY_APP_VERSION, 0);
         if (previousVersion == currentVersion) return;
+        boolean resumeMonitoring = prefs.getBoolean(
+                AppPreferences.KEY_MONITORING_ENABLED, false)
+                || prefs.getBoolean(AppPreferences.KEY_RUNNING, false);
         getSystemService(NotificationManager.class).cancelAll();
-        stopService(new Intent(this, MonitorService.class));
         android.content.SharedPreferences.Editor editor = prefs.edit()
                 .putInt(AppPreferences.KEY_APP_VERSION, currentVersion)
-                .putBoolean(AppPreferences.KEY_RUNNING, false)
-                .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
+                .putBoolean(AppPreferences.KEY_RUNNING, resumeMonitoring)
+                .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, resumeMonitoring)
                 .putString(AppPreferences.KEY_CONNECTION, "standby");
         if (previousVersion > 0 && previousVersion < 35) {
             editor.remove(MapPreferences.DARK)
@@ -93,6 +97,12 @@ public class SplashActivity extends Activity {
         }
         editor.apply();
         AppPreferences.clearLiveTelemetry(this);
+        if (resumeMonitoring && (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED
+                || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED)) {
+            startForegroundService(new Intent(this, MonitorService.class));
+        }
     }
 
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
