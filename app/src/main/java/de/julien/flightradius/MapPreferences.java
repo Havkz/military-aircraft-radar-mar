@@ -66,7 +66,7 @@ final class MapPreferences {
             result.put("coloredTrails", preferences.getBoolean(COLORED_TRAILS, true));
             result.put("showLabels", preferences.getBoolean(SHOW_LABELS, true));
             result.put("labelTransparency",
-                    preferences.getFloat(LABEL_TRANSPARENCY, 0.8f));
+                    preferences.getFloat(LABEL_TRANSPARENCY, 0.6f));
             result.put("labelUnits", preferences.getBoolean(LABEL_UNITS, true));
             result.put("smallLabels", preferences.getBoolean(SMALL_LABELS, true));
             result.put("geometricAltitude",
