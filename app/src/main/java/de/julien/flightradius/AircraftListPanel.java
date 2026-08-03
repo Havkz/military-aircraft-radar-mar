@@ -77,7 +77,7 @@ final class AircraftListPanel extends ScrollView {
     private void addAircraft(JSONObject plane, int index) {
         LinearLayout card = card();
         card.setOrientation(LinearLayout.VERTICAL);
-        String callsign = plane.optString("callsign", "");
+        String callsign = AircraftData.normalizeCallsign(plane.optString("callsign", ""));
         card.addView(label(callsign.isEmpty() ? L10n.t(host, "no_callsign") : callsign,
                 21, MARColors.ORANGE, Typeface.BOLD));
         card.addView(label(plane.optString("type", "—") + "  •  "

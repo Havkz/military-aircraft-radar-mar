@@ -104,6 +104,7 @@ final class CustomAlertRules {
             return validSquawk(rule.squawk)
                     && rule.squawk.equals(aircraft.optString("squawk", "").trim());
         }
+        if (AircraftData.isOnGround(aircraft)) return false;
         if (Double.isNaN(altitudeFt) && (LOW_LEVEL.equals(rule.type)
                 || ALTITUDE_BELOW.equals(rule.type))) return false;
         if (LOW_LEVEL.equals(rule.type)) {

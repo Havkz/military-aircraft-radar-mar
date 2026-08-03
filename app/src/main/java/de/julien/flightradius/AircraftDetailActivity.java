@@ -51,7 +51,7 @@ public class AircraftDetailActivity extends Activity {
         LinearLayout.LayoutParams heroParams = new LinearLayout.LayoutParams(-1, dp(190));
         heroParams.setMargins(0, dp(14), 0, 0); root.addView(hero, heroParams);
 
-        String callsign = aircraft.optString("callsign", "");
+        String callsign = AircraftData.normalizeCallsign(aircraft.optString("callsign", ""));
         TextView title = label(callsign.isEmpty() ? L10n.t(this, "no_callsign") : callsign,
                 32, text, Typeface.BOLD); title.setPadding(0, dp(12), 0, 0); root.addView(title);
         TextView id = label(aircraft.optString("type", "—") + "  //  "
@@ -107,7 +107,7 @@ public class AircraftDetailActivity extends Activity {
     }
 
     private void openTracker() {
-        String callsign = aircraft.optString("callsign", "");
+        String callsign = AircraftData.normalizeCallsign(aircraft.optString("callsign", ""));
         String hex = aircraft.optString("hex", "");
         double lat = aircraft.optDouble("lat", Double.NaN), lon = aircraft.optDouble("lon", Double.NaN);
         startActivity(TrackerLinks.selectedIntent(this, callsign, hex, lat, lon));

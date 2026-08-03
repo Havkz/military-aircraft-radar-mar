@@ -77,7 +77,7 @@ public class AircraftListActivity extends Activity {
 
     private void addAircraft(JSONObject plane, int index) {
         LinearLayout card = card(); card.setOrientation(LinearLayout.VERTICAL);
-        String callsign = plane.optString("callsign", "");
+        String callsign = AircraftData.normalizeCallsign(plane.optString("callsign", ""));
         TextView name = label(callsign.isEmpty() ? L10n.t(this, "no_callsign") : callsign,
                 21, text, Typeface.BOLD); card.addView(name);
         String type = plane.optString("type", "—"); String reg = plane.optString("registration", "—");

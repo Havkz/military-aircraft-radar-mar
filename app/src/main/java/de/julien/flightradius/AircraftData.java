@@ -14,6 +14,7 @@ final class AircraftData {
     private static final double MAX_LAST_POSITION_AGE_SECONDS = 60d;
     private static final Pattern ICAO_HELICOPTER_DESCRIPTION =
             Pattern.compile("^H[0-9][A-Z]$");
+    private static final Pattern CALLSIGN_CONTENT = Pattern.compile(".*[A-Z0-9].*");
     private static final String[] POSITION_FIELDS = {
             "lat", "lon", "seen_pos", "lastPosition", "alt_baro", "alt_geom",
             "gs", "track", "baro_rate", "geom_rate", "type", "mlat", "tisb",
@@ -73,13 +74,20 @@ final class AircraftData {
     }
 
     static String displayName(JSONObject aircraft) {
-        if (aircraft == null) return "";
-        String callsign = aircraft.optString("flight", "").trim();
-        if (!callsign.isEmpty()) return callsign;
-        String registration = aircraft.optString("r", "").trim();
-        if (!registration.isEmpty()) return registration;
-        return aircraft.optString("hex", "").replace("~", "")
-                .trim().toUpperCase(Locale.US);
+        String callsign = callsign(aircraft);
+        return callsign.isEmpty() ? "NO CALLSIGN" : callsign;
+    }
+
+    static String callsign(JSONObject aircraft) {
+        return aircraft == null ? "" : normalizeCallsign(aircraft.optString("flight", ""));
+    }
+
+    static String normalizeCallsign(String rawValue) {
+        String value = rawValue == null ? "" : rawValue.trim().toUpperCase(Locale.US);
+        if (value.isEmpty() || "N/A".equals(value) || "NONE".equals(value)
+                || "NULL".equals(value) || "UNKNOWN".equals(value)
+                || !CALLSIGN_CONTENT.matcher(value).matches()) return "";
+        return value;
     }
 
     static boolean isRotorcraft(JSONObject aircraft) {
@@ -92,6 +100,14 @@ final class AircraftData {
         return description.contains("HELICOPTER")
                 || description.contains("ROTORCRAFT")
                 || ICAO_HELICOPTER_DESCRIPTION.matcher(compactDescription).matches();
+    }
+
+    static boolean isOnGround(JSONObject aircraft) {
+        if (aircraft == null) return false;
+        Object barometricAltitude = aircraft.opt("alt_baro");
+        return aircraft.optBoolean("ground", false)
+                || barometricAltitude instanceof String
+                && "ground".equalsIgnoreCase(((String) barometricAltitude).trim());
     }
 
     private static void appendMerged(Map<String, JSONObject> byHex, JSONArray withoutHex,

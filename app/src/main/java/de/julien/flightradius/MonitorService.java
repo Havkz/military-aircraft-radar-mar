@@ -448,7 +448,7 @@ public class MonitorService extends Service implements LocationListener {
                         if (!Double.isNaN(queryDistance) && queryDistance <= mapRadiusKm) {
                             allAircraft.put(compactAircraft(plane,
                                     plane.optString("hex", "unknown").replace("~", ""),
-                                    plane.optString("flight", "").trim(), ownDistance,
+                                    AircraftData.callsign(plane), ownDistance,
                                     altitudeFeet(plane.opt("alt_geom"), plane.opt("alt_baro")),
                                     mapPosition[0], mapPosition[1]));
                         }
@@ -466,7 +466,7 @@ public class MonitorService extends Service implements LocationListener {
                     if (Double.isNaN(distanceKm) || distanceKm > radiusKm) continue;
 
                     String hex = plane.optString("hex", "unknown").replace("~", "");
-                    String callsign = plane.optString("flight", "").trim();
+                    String callsign = AircraftData.callsign(plane);
                     double altitudeFt = altitudeFeet(
                             plane.opt("alt_geom"), plane.opt("alt_baro"));
                     String customReason = CustomAlertRules.evaluate(customRules, plane, hex,
@@ -647,11 +647,10 @@ public class MonitorService extends Service implements LocationListener {
     private void showAircraftNotification(JSONObject aircraft, boolean inRange) {
         if (!running || !AppPreferences.get(this)
                 .getBoolean(AppPreferences.KEY_RUNNING, false)) return;
-        String callsign = aircraft.optString("callsign", "");
-        String displayName = aircraft.optString("display_name", callsign);
+        String callsign = AircraftData.normalizeCallsign(aircraft.optString("callsign", ""));
+        String displayName = callsign.isEmpty() ? "NO CALLSIGN" : callsign;
         String hex = aircraft.optString("hex", "");
         if (hex.isEmpty()) return;
-        if (displayName.isEmpty()) displayName = hex.toUpperCase(Locale.US);
         long now = System.currentTimeMillis();
         Long suppressedUntil = notificationSuppressedUntil.get(hex);
         if (suppressedUntil != null) {
@@ -714,9 +713,15 @@ public class MonitorService extends Service implements LocationListener {
     }
 
     static double altitudeFeet(Object geometricValue, Object barometricValue) {
+        if (isGroundAltitude(barometricValue)) return 0d;
         double geometricFeet = altitudeValueFeet(geometricValue);
         if (!Double.isNaN(geometricFeet)) return geometricFeet;
         return altitudeValueFeet(barometricValue);
+    }
+
+    static boolean isGroundAltitude(Object value) {
+        return value instanceof String && "ground".equalsIgnoreCase(
+                ((String) value).trim());
     }
 
     static boolean isAlertTarget(JSONObject aircraft) {
@@ -757,8 +762,11 @@ public class MonitorService extends Service implements LocationListener {
         item.put("sources", plane.optJSONArray("sources") == null
                 ? new JSONArray() : plane.optJSONArray("sources"));
         item.put("distance_km", distanceKm);
+        boolean onGround = AircraftData.isOnGround(plane);
+        item.put("on_ground", onGround);
         item.put("altitude_ft", Double.isNaN(altitudeFt) ? JSONObject.NULL : altitudeFt);
-        item.put("barometric_altitude_ft", altitudeValueOrNull(plane.opt("alt_baro")));
+        item.put("barometric_altitude_ft", onGround
+                ? 0d : altitudeValueOrNull(plane.opt("alt_baro")));
         item.put("geometric_altitude_ft", altitudeValueOrNull(plane.opt("alt_geom")));
         item.put("geometric_msl_altitude_ft",
                 geometricMslAltitudeOrNull(plane, latitude, longitude));

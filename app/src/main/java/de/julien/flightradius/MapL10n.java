@@ -53,6 +53,7 @@ final class MapL10n {
             {"pictures_planespotting", "Pictures: planespotting.be"},
             {"traffic_privacy", "Traffic & privacy"},
             {"ground_vehicles", "Show ground vehicles"},
+            {"ground", "Ground"},
             {"non_icao", "Show non-ICAO targets"},
             {"update_gps", "Update GPS marker"},
             {"include_filters_url", "Include filters in the map URL"},
