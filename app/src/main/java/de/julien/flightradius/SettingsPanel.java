@@ -2,7 +2,6 @@ package de.julien.flightradius;
 
 import android.app.Activity;
 import android.app.Dialog;
-import android.app.AlertDialog;
 import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -133,7 +132,7 @@ final class SettingsPanel extends ScrollView {
                 new LinearLayout.LayoutParams(0, -2, 1f));
         Switch toggle = new Switch(host);
         toggle.setChecked(prefs.getBoolean(AppPreferences.KEY_VIBRATION, true));
-        toggle.setThumbTintList(android.content.res.ColorStateList.valueOf(MARColors.GREEN));
+        styleSwitch(toggle, MARColors.GREEN);
         toggle.setOnCheckedChangeListener((button, checked) -> {
             prefs.edit().putBoolean(AppPreferences.KEY_VIBRATION, checked).apply();
             host.getSystemService(NotificationManager.class)
@@ -149,32 +148,7 @@ final class SettingsPanel extends ScrollView {
         value.setText(ProviderCredentials.hasAdsbExchangeKey(host)
                 ? MapL10n.t(host, "configured") + "  ✓"
                 : MapL10n.t(host, "not_configured") + "  ›");
-        row.setOnClickListener(view -> {
-            EditText input = new EditText(host);
-            input.setSingleLine(true);
-            input.setHint(MapL10n.t(host, "adsbx_key"));
-            input.setInputType(InputType.TYPE_CLASS_TEXT
-                    | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-            input.setText(ProviderCredentials.adsbExchangeKey(host));
-            input.setSelectAllOnFocus(true);
-            AlertDialog dialog = new AlertDialog.Builder(host)
-                    .setTitle(MapL10n.t(host, "adsbx_key"))
-                    .setMessage(MapL10n.t(host, "key_private"))
-                    .setView(input)
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .setNeutralButton(MapL10n.t(host, "remove"), null)
-                    .setPositiveButton(MapL10n.t(host, "save"), null)
-                    .create();
-            dialog.setOnShowListener(ignored -> {
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
-                    if (storeAdsbExchangeKey(input.getText().toString(), value)) dialog.dismiss();
-                });
-                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(button -> {
-                    if (storeAdsbExchangeKey("", value)) dialog.dismiss();
-                });
-            });
-            dialog.show();
-        });
+        row.setOnClickListener(view -> showApiKeyEditor(value));
         root.addView(row, cardParams());
     }
 
@@ -192,15 +166,12 @@ final class SettingsPanel extends ScrollView {
                 refreshValue.run();
                 return;
             }
-            new AlertDialog.Builder(host)
-                    .setTitle(MapL10n.t(host, "business_rate"))
-                    .setMessage(MapL10n.t(host, "business_rate_warning"))
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .setPositiveButton(MapL10n.t(host, "enable"), (dialog, which) -> {
+            showConfirmation(MapL10n.t(host, "business_rate"),
+                    MapL10n.t(host, "business_rate_warning"),
+                    MapL10n.t(host, "enable"), () -> {
                         setAirplanesBusinessRate(true);
                         refreshValue.run();
-                    })
-                    .show();
+                    });
         });
         root.addView(row, cardParams());
     }
@@ -228,14 +199,10 @@ final class SettingsPanel extends ScrollView {
             entries[i + 1] = (rule.enabled ? "●  " : "○  ")
                     + ruleSummary(rule);
         }
-        new AlertDialog.Builder(host)
-                .setTitle(MapL10n.t(host, "custom_alerts"))
-                .setItems(entries, (dialog, which) -> {
+        showDropdown(MapL10n.t(host, "custom_alerts"), entries, -1, which -> {
                     if (which == 0) chooseNewAlertType(refresh);
                     else showRuleActions(rules, which - 1, refresh);
-                })
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
+                });
     }
 
     private void chooseNewAlertType(Runnable refresh) {
@@ -246,9 +213,7 @@ final class SettingsPanel extends ScrollView {
                 MapL10n.t(host, "altitude_below"),
                 MapL10n.t(host, "speed_below"),
                 MapL10n.t(host, "speed_above")};
-        new AlertDialog.Builder(host)
-                .setTitle(MapL10n.t(host, "rule_type"))
-                .setItems(labels, (dialog, which) -> {
+        showDropdown(MapL10n.t(host, "rule_type"), labels, -1, which -> {
                     CustomAlertRules.Rule rule = new CustomAlertRules.Rule();
                     if (which <= 3) {
                         rule.type = CustomAlertRules.SQUAWK;
@@ -264,7 +229,7 @@ final class SettingsPanel extends ScrollView {
                                 ? 120 : 0;
                     }
                     editAlertRule(rule, -1, refresh);
-                }).show();
+                });
     }
 
     private void showRuleActions(List<CustomAlertRules.Rule> rules, int index,
@@ -273,9 +238,7 @@ final class SettingsPanel extends ScrollView {
         String[] actions = {rule.enabled ? MapL10n.t(host, "disable")
                 : MapL10n.t(host, "enable"), MapL10n.t(host, "edit"),
                 MapL10n.t(host, "delete")};
-        new AlertDialog.Builder(host)
-                .setTitle(ruleSummary(rule))
-                .setItems(actions, (dialog, which) -> {
+        showDropdown(ruleSummary(rule), actions, -1, which -> {
                     if (which == 0) {
                         rule.enabled = !rule.enabled;
                         saveAlertRules(rules, refresh);
@@ -284,7 +247,7 @@ final class SettingsPanel extends ScrollView {
                         rules.remove(index);
                         saveAlertRules(rules, refresh);
                     }
-                }).show();
+                });
     }
 
     private void editAlertRule(CustomAlertRules.Rule rule, int index, Runnable refresh) {
@@ -320,14 +283,22 @@ final class SettingsPanel extends ScrollView {
         EditText duration = ruleField(form, MapL10n.t(host, "duration_seconds"),
                 String.valueOf(rule.durationSeconds), true);
         final EditText verticalField = vertical;
-        AlertDialog alert = new AlertDialog.Builder(host)
-                .setTitle(MapL10n.t(host, "edit_rule"))
-                .setView(form)
-                .setNegativeButton(android.R.string.cancel, null)
-                .setPositiveButton(MapL10n.t(host, "save"), null)
-                .create();
-        alert.setOnShowListener(ignored -> alert.getButton(AlertDialog.BUTTON_POSITIVE)
-                .setOnClickListener(button -> {
+        Dialog alert = new Dialog(host);
+        LinearLayout panel = modalPanel(MapL10n.t(host, "edit_rule"));
+        panel.addView(form, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout actions = new LinearLayout(host);
+        actions.setGravity(Gravity.END);
+        actions.setPadding(0, dp(8), 0, 0);
+        TextView cancel = modalButton(host.getString(android.R.string.cancel), false);
+        TextView save = modalButton(MapL10n.t(host, "save"), true);
+        actions.addView(cancel);
+        LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(-2, dp(46));
+        saveParams.setMargins(dp(8), 0, 0, 0);
+        actions.addView(save, saveParams);
+        panel.addView(actions, new LinearLayout.LayoutParams(-1, -2));
+        alert.setContentView(panel);
+        cancel.setOnClickListener(button -> dismissAnimated(alert, panel));
+        save.setOnClickListener(button -> {
                     try {
                         rule.name = name.getText().toString().trim();
                         if (CustomAlertRules.SQUAWK.equals(rule.type)) {
@@ -351,14 +322,14 @@ final class SettingsPanel extends ScrollView {
                         if (index < 0) rules.add(rule);
                         else if (index < rules.size()) rules.set(index, rule);
                         saveAlertRules(rules, refresh);
-                        alert.dismiss();
+                        dismissAnimated(alert, panel);
                     } catch (Exception error) {
                         android.widget.Toast.makeText(host,
                                 MapL10n.t(host, "invalid_rule"),
                                 android.widget.Toast.LENGTH_LONG).show();
                     }
-                }));
-        alert.show();
+                });
+        showModal(alert, panel);
     }
 
     private String ruleSummary(CustomAlertRules.Rule rule) {
@@ -386,7 +357,17 @@ final class SettingsPanel extends ScrollView {
         input.setSingleLine(true);
         input.setInputType(number ? InputType.TYPE_CLASS_NUMBER
                 | InputType.TYPE_NUMBER_FLAG_DECIMAL : InputType.TYPE_CLASS_TEXT);
-        form.addView(input, new LinearLayout.LayoutParams(-1, -2));
+        input.setTextColor(text);
+        input.setHintTextColor(muted);
+        input.setTextSize(14);
+        input.setPadding(dp(15), dp(10), dp(15), dp(10));
+        input.setBackground(fieldBackground(false));
+        input.setSelectAllOnFocus(true);
+        input.setOnFocusChangeListener((view, focused) ->
+                input.setBackground(fieldBackground(focused)));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(54));
+        params.setMargins(0, 0, 0, dp(10));
+        form.addView(input, params);
         return input;
     }
 
@@ -499,7 +480,7 @@ final class SettingsPanel extends ScrollView {
                 new LinearLayout.LayoutParams(0, -2, 1f));
         Switch toggle = new Switch(host);
         toggle.setChecked(prefs.getBoolean(key, defaultValue));
-        toggle.setThumbTintList(android.content.res.ColorStateList.valueOf(MARColors.BLUE));
+        styleSwitch(toggle, MARColors.BLUE);
         toggle.setOnCheckedChangeListener((button, checked) ->
                 prefs.edit().putBoolean(key, checked).apply());
         row.addView(toggle);
@@ -530,6 +511,17 @@ final class SettingsPanel extends ScrollView {
         root.addView(row, cardParams());
     }
 
+    private void styleSwitch(Switch toggle, int accent) {
+        int[][] states = {{android.R.attr.state_checked}, {-android.R.attr.state_checked}};
+        toggle.setThumbTintList(new android.content.res.ColorStateList(states,
+                new int[]{accent, muted}));
+        int activeTrack = Color.argb(105, Color.red(accent), Color.green(accent),
+                Color.blue(accent));
+        int inactiveTrack = dark ? MARColors.DARK_BORDER : MARColors.LIGHT_BORDER;
+        toggle.setTrackTintList(new android.content.res.ColorStateList(states,
+                new int[]{activeTrack, inactiveTrack}));
+    }
+
 
     private boolean storeAdsbExchangeKey(String key, TextView value) {
         try {
@@ -549,58 +541,193 @@ final class SettingsPanel extends ScrollView {
         }
     }
 
-    private void showDropdown(String title, String[] labels, int selected,
-                              ChoiceListener listener) {
-        Dialog dialog = new Dialog(host);
+    private LinearLayout modalPanel(String title) {
         LinearLayout panel = new LinearLayout(host);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(18), dp(18), dp(18), dp(14));
+        panel.setPadding(dp(18), dp(17), dp(18), dp(15));
         GradientDrawable background = new GradientDrawable();
         background.setColor(surface);
-        background.setCornerRadius(dp(24));
+        background.setCornerRadius(dp(26));
         background.setStroke(dp(1), dark ? MARColors.DARK_BORDER : MARColors.LIGHT_BORDER);
         panel.setBackground(background);
+
+        LinearLayout header = new LinearLayout(host);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView accent = label("", 1, MARColors.GREEN, Typeface.NORMAL);
+        GradientDrawable accentBackground = new GradientDrawable();
+        accentBackground.setColor(MARColors.GREEN);
+        accentBackground.setCornerRadius(dp(4));
+        accent.setBackground(accentBackground);
+        header.addView(accent, new LinearLayout.LayoutParams(dp(5), dp(22)));
         TextView heading = label(title.toUpperCase(), 12, text, Typeface.BOLD);
         heading.setLetterSpacing(0.1f);
-        heading.setPadding(dp(4), 0, dp(4), dp(12));
-        panel.addView(heading);
-        for (int i = 0; i < labels.length; i++) {
-            final int choice = i;
-            boolean active = i == selected;
-            TextView option = label((active ? "●  " : "○  ") + labels[i], 15,
-                    text,
-                    active ? Typeface.BOLD : Typeface.NORMAL);
-            option.setGravity(Gravity.CENTER_VERTICAL);
-            option.setPadding(dp(15), dp(13), dp(15), dp(13));
-            GradientDrawable optionBackground = new GradientDrawable();
-            optionBackground.setColor(active
-                    ? (dark ? MARColors.DARK_SELECTED : MARColors.LIGHT_SELECTED)
-                    : Color.TRANSPARENT);
-            optionBackground.setCornerRadius(dp(14));
-            option.setBackground(optionBackground);
-            option.setOnClickListener(view -> {
-                dialog.dismiss();
-                listener.onChoice(choice);
-            });
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
-            params.setMargins(0, 0, 0, dp(4));
-            panel.addView(option, params);
-        }
+        heading.setPadding(dp(11), 0, dp(4), 0);
+        header.addView(heading, new LinearLayout.LayoutParams(0, -2, 1f));
+        panel.addView(header, new LinearLayout.LayoutParams(-1, dp(38)));
+        return panel;
+    }
+
+    private void showApiKeyEditor(TextView value) {
+        Dialog dialog = new Dialog(host);
+        LinearLayout panel = modalPanel(MapL10n.t(host, "adsbx_key"));
+        TextView note = label(MapL10n.t(host, "key_private"), 12, muted, Typeface.NORMAL);
+        note.setLineSpacing(0, 1.2f);
+        note.setPadding(dp(2), 0, dp(2), dp(13));
+        panel.addView(note);
+        LinearLayout form = new LinearLayout(host);
+        form.setOrientation(LinearLayout.VERTICAL);
+        EditText input = ruleField(form, MapL10n.t(host, "adsbx_key"),
+                ProviderCredentials.adsbExchangeKey(host), false);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        panel.addView(form);
+        LinearLayout actions = new LinearLayout(host);
+        actions.setGravity(Gravity.END);
+        TextView remove = modalButton(MapL10n.t(host, "remove"), false);
+        TextView cancel = modalButton(host.getString(android.R.string.cancel), false);
+        TextView save = modalButton(MapL10n.t(host, "save"), true);
+        actions.addView(remove);
+        actions.addView(cancel);
+        actions.addView(save);
+        panel.addView(actions);
         dialog.setContentView(panel);
+        remove.setOnClickListener(button -> {
+            if (storeAdsbExchangeKey("", value)) dismissAnimated(dialog, panel);
+        });
+        cancel.setOnClickListener(button -> dismissAnimated(dialog, panel));
+        save.setOnClickListener(button -> {
+            if (storeAdsbExchangeKey(input.getText().toString(), value)) {
+                dismissAnimated(dialog, panel);
+            }
+        });
+        showModal(dialog, panel);
+    }
+
+    private void showConfirmation(String title, String message,
+                                  String positive, Runnable confirmed) {
+        Dialog dialog = new Dialog(host);
+        LinearLayout panel = modalPanel(title);
+        TextView body = label(message, 13, muted, Typeface.NORMAL);
+        body.setLineSpacing(0, 1.25f);
+        body.setPadding(dp(2), dp(2), dp(2), dp(18));
+        panel.addView(body);
+        LinearLayout actions = new LinearLayout(host);
+        actions.setGravity(Gravity.END);
+        TextView cancel = modalButton(host.getString(android.R.string.cancel), false);
+        TextView accept = modalButton(positive, true);
+        actions.addView(cancel);
+        LinearLayout.LayoutParams acceptParams = new LinearLayout.LayoutParams(-2, dp(46));
+        acceptParams.setMargins(dp(8), 0, 0, 0);
+        actions.addView(accept, acceptParams);
+        panel.addView(actions);
+        dialog.setContentView(panel);
+        cancel.setOnClickListener(button -> dismissAnimated(dialog, panel));
+        accept.setOnClickListener(button -> {
+            confirmed.run();
+            dismissAnimated(dialog, panel);
+        });
+        showModal(dialog, panel);
+    }
+
+    private TextView modalButton(String title, boolean primary) {
+        TextView button = label(title.toUpperCase(), 12,
+                primary ? MARColors.INK : text, Typeface.BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setLetterSpacing(0.08f);
+        button.setPadding(dp(17), dp(10), dp(17), dp(10));
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(primary ? MARColors.GREEN : Color.TRANSPARENT);
+        background.setCornerRadius(dp(18));
+        background.setStroke(dp(1), primary ? MARColors.GREEN
+                : (dark ? MARColors.DARK_BORDER : MARColors.LIGHT_BORDER));
+        button.setBackground(background);
+        button.setOnTouchListener((view, event) -> {
+            if (event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
+                view.animate().scaleX(.96f).scaleY(.96f).setDuration(80).start();
+            } else if (event.getActionMasked() == android.view.MotionEvent.ACTION_UP
+                    || event.getActionMasked() == android.view.MotionEvent.ACTION_CANCEL) {
+                view.animate().scaleX(1f).scaleY(1f).setDuration(120).start();
+            }
+            return false;
+        });
+        return button;
+    }
+
+    private GradientDrawable fieldBackground(boolean focused) {
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(dark ? MARColors.DARK_PANEL : MARColors.LIGHT_PANEL);
+        background.setCornerRadius(dp(15));
+        background.setStroke(dp(focused ? 2 : 1), focused ? MARColors.BLUE
+                : (dark ? MARColors.DARK_BORDER : MARColors.LIGHT_BORDER));
+        return background;
+    }
+
+    private void showModal(Dialog dialog, LinearLayout panel) {
         dialog.setCanceledOnTouchOutside(true);
+        dialog.show();
         Window window = dialog.getWindow();
         if (window != null) {
             window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            window.setDimAmount(0.58f);
+            window.setDimAmount(.64f);
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setLayout(getResources().getDisplayMetrics().widthPixels - dp(36), -2);
         }
-        dialog.show();
-        if (window != null) window.setLayout(
-                getResources().getDisplayMetrics().widthPixels - dp(44), -2);
         panel.setAlpha(0f);
-        panel.setScaleX(0.97f);
-        panel.setScaleY(0.97f);
-        panel.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(170).start();
+        panel.setScaleX(.96f);
+        panel.setScaleY(.96f);
+        panel.setTranslationY(dp(22));
+        panel.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0)
+                .setInterpolator(new android.view.animation.PathInterpolator(.2f, .9f, .2f, 1f))
+                .setDuration(220).start();
+    }
+
+    private void dismissAnimated(Dialog dialog, LinearLayout panel) {
+        panel.animate().alpha(0f).scaleX(.98f).scaleY(.98f).translationY(dp(12))
+                .setDuration(130).withEndAction(dialog::dismiss).start();
+    }
+
+    private void showDropdown(String title, String[] labels, int selected,
+                              ChoiceListener listener) {
+        Dialog dialog = new Dialog(host);
+        LinearLayout panel = modalPanel(title);
+        ScrollView optionsScroll = new ScrollView(host);
+        optionsScroll.setFillViewport(true);
+        optionsScroll.setVerticalScrollBarEnabled(false);
+        LinearLayout options = new LinearLayout(host);
+        options.setOrientation(LinearLayout.VERTICAL);
+        optionsScroll.addView(options, new ScrollView.LayoutParams(-1, -2));
+        for (int i = 0; i < labels.length; i++) {
+            final int choice = i;
+            boolean active = selected >= 0 && i == selected;
+            TextView option = label((active ? "✓  " : "   ") + labels[i], 14,
+                    active ? MARColors.GREEN : text,
+                    active ? Typeface.BOLD : Typeface.NORMAL);
+            option.setGravity(Gravity.CENTER_VERTICAL);
+            option.setPadding(dp(15), dp(12), dp(15), dp(12));
+            GradientDrawable optionBackground = new GradientDrawable();
+            optionBackground.setColor(active
+                    ? (dark ? MARColors.DARK_SELECTED : MARColors.LIGHT_SELECTED)
+                    : (dark ? MARColors.DARK_PANEL : MARColors.LIGHT_PANEL));
+            optionBackground.setCornerRadius(dp(16));
+            optionBackground.setStroke(dp(1), active ? MARColors.GREEN
+                    : (dark ? MARColors.DARK_BORDER : MARColors.LIGHT_BORDER));
+            option.setBackground(optionBackground);
+            option.setOnClickListener(view -> {
+                view.animate().scaleX(.97f).scaleY(.97f).alpha(.72f).setDuration(90)
+                        .withEndAction(() -> {
+                            dialog.dismiss();
+                            listener.onChoice(choice);
+                        }).start();
+            });
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+            params.setMargins(0, 0, 0, dp(7));
+            options.addView(option, params);
+        }
+        int available = getResources().getDisplayMetrics().heightPixels - dp(190);
+        int desired = labels.length * dp(57);
+        panel.addView(optionsScroll, new LinearLayout.LayoutParams(
+                -1, Math.min(Math.max(dp(57), desired), Math.max(dp(180), available))));
+        dialog.setContentView(panel);
+        showModal(dialog, panel);
     }
 
     private LinearLayout settingRow(String title) {
