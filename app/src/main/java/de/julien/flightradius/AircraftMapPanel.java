@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.view.MotionEvent;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -20,6 +21,8 @@ final class AircraftMapPanel extends FrameLayout {
     private final WebView webView;
     private boolean ready;
     private boolean pendingRefresh;
+    private boolean pageVisible;
+    private boolean trafficPaused;
 
     AircraftMapPanel(Activity host) {
         super(host);
@@ -36,7 +39,8 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.7 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.8 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+        webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
             if (event.getPointerCount() > 1 || action == MotionEvent.ACTION_POINTER_DOWN) {
@@ -92,12 +96,28 @@ final class AircraftMapPanel extends FrameLayout {
         }
         int radius = AppPreferences.get(host).getInt(
                 AppPreferences.KEY_RADIUS_KM, AppPreferences.DEFAULT_RADIUS_KM);
+        String mapAircraftJson = trafficPaused
+                ? "[]" : MonitorService.latestAllAircraftJson();
         String script = String.format(Locale.US, "window.marUpdate(%s,%s,%s,%d,%s)",
-                JSONObject.quote(MonitorService.latestAllAircraftJson()),
+                JSONObject.quote(mapAircraftJson),
                 Double.isNaN(latitude) ? "null" : Double.toString(latitude),
                 Double.isNaN(longitude) ? "null" : Double.toString(longitude),
                 radius, MapPreferences.json(host).toString());
         webView.evaluateJavascript("window.marResize&&window.marResize();" + script, null);
+    }
+
+    void setPageVisible(boolean visible) {
+        pageVisible = visible;
+        MonitorService.setMapVisible(pageVisible && !trafficPaused);
+    }
+
+    private final class MapBridge {
+        @JavascriptInterface public void setMapTrafficPaused(boolean paused) {
+            host.runOnUiThread(() -> {
+                trafficPaused = paused;
+                MonitorService.setMapVisible(pageVisible && !trafficPaused);
+            });
+        }
     }
 
     void destroy() {

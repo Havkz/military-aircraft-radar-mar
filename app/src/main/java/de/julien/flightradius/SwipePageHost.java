@@ -13,6 +13,7 @@ final class SwipePageHost extends FrameLayout {
     private float downY;
     private boolean horizontal;
     private boolean multiTouch;
+    private boolean swipeEnabled = true;
     private Listener listener;
 
     SwipePageHost(Context context) {
@@ -22,8 +23,16 @@ final class SwipePageHost extends FrameLayout {
     }
 
     void setListener(Listener listener) { this.listener = listener; }
+    void setSwipeEnabled(boolean enabled) {
+        swipeEnabled = enabled;
+        if (!enabled) {
+            horizontal = false;
+            multiTouch = false;
+        }
+    }
 
     @Override public boolean onInterceptTouchEvent(MotionEvent event) {
+        if (!swipeEnabled) return false;
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 downX = event.getX();
@@ -60,6 +69,7 @@ final class SwipePageHost extends FrameLayout {
     }
 
     @Override public boolean onTouchEvent(MotionEvent event) {
+        if (!swipeEnabled) return false;
         if (multiTouch || event.getPointerCount() > 1) {
             if (event.getActionMasked() == MotionEvent.ACTION_UP
                     || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {

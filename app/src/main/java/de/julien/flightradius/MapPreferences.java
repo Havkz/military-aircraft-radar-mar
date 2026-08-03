@@ -13,16 +13,13 @@ final class MapPreferences {
     static final String DIM = "map_dim";
     static final String COLORED_PLANES = "map_colored_planes";
     static final String COLORED_TRAILS = "map_colored_trails";
-    static final String HARDWARE_TRACKS = "map_hardware_tracks";
     static final String SHOW_LABELS = "map_show_labels";
     static final String LABEL_UNITS = "map_label_units";
     static final String SMALL_LABELS = "map_small_labels";
-    static final String SMALL_WIND_LABELS = "map_small_wind_labels";
     static final String GEOMETRIC_ALTITUDE = "map_geometric_altitude";
     static final String EGM_CONVERSION = "map_egm_conversion";
     static final String QNH_CORRECTION = "map_qnh_correction";
     static final String TRACK_UTC = "map_track_utc";
-    static final String LIVE_TRACK_UTC = "map_live_track_utc";
     static final String HISTORIC_TRACK_UTC = "map_historic_track_utc";
     static final String LAST_LEG_ONLY = "map_last_leg_only";
     static final String ALTITUDE_CHART = "map_altitude_chart";
@@ -42,10 +39,9 @@ final class MapPreferences {
 
     private static final String[] KEYS = {
             TEXT_SCALE, ICON_SCALE, DARK, DARKER, DIM, COLORED_PLANES,
-            COLORED_TRAILS, HARDWARE_TRACKS, SHOW_LABELS, LABEL_UNITS, SMALL_LABELS,
-            SMALL_WIND_LABELS,
+            COLORED_TRAILS, SHOW_LABELS, LABEL_UNITS, SMALL_LABELS,
             GEOMETRIC_ALTITUDE, EGM_CONVERSION, QNH_CORRECTION,
-            TRACK_UTC, LIVE_TRACK_UTC, HISTORIC_TRACK_UTC,
+            TRACK_UTC, HISTORIC_TRACK_UTC,
             LAST_LEG_ONLY, ALTITUDE_CHART, INFOBLOCK, WIDE_INFOBLOCK,
             HOVER_INFOBLOCK,
             AUTO_SELECT, PICTURES_PLANESPOTTERS, PICTURES_PLANESPOTTING,
@@ -67,19 +63,14 @@ final class MapPreferences {
             result.put("dim", preferences.getBoolean(DIM, false));
             result.put("coloredPlanes", preferences.getBoolean(COLORED_PLANES, true));
             result.put("coloredTrails", preferences.getBoolean(COLORED_TRAILS, true));
-            result.put("hardwareTracks", preferences.getBoolean(HARDWARE_TRACKS, true));
             result.put("showLabels", preferences.getBoolean(SHOW_LABELS, false));
             result.put("labelUnits", preferences.getBoolean(LABEL_UNITS, true));
             result.put("smallLabels", preferences.getBoolean(SMALL_LABELS, true));
-            result.put("smallWindLabels",
-                    preferences.getBoolean(SMALL_WIND_LABELS, true));
             result.put("geometricAltitude",
                     preferences.getBoolean(GEOMETRIC_ALTITUDE, false));
             result.put("egmConversion", preferences.getBoolean(EGM_CONVERSION, false));
             result.put("qnhCorrection", preferences.getBoolean(QNH_CORRECTION, false));
             boolean legacyTrackUtc = preferences.getBoolean(TRACK_UTC, true);
-            result.put("liveTrackUtc",
-                    preferences.getBoolean(LIVE_TRACK_UTC, false));
             result.put("historicTrackUtc",
                     preferences.getBoolean(HISTORIC_TRACK_UTC, legacyTrackUtc));
             result.put("lastLegOnly", preferences.getBoolean(LAST_LEG_ONLY, true));

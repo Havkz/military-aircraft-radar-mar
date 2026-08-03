@@ -98,6 +98,7 @@ final class MapL10n {
             ,{"altitude_details","Altitude","高度","ऊँचाई","Altitud","Altitude","الارتفاع","উচ্চতা","Altitude","Высота","Höhe"}
             ,{"movement","Movement","运动","गति","Movimiento","Mouvement","الحركة","চলাচল","Movimento","Движение","Bewegung"}
             ,{"signal_accuracy","Signal & accuracy","信号和精度","सिग्नल और सटीकता","Señal y precisión","Signal et précision","الإشارة والدقة","সংকেত ও নির্ভুলতা","Sinal e precisão","Сигнал и точность","Signal & Genauigkeit"}
+            ,{"zoom_in_traffic","Zoom in to load live traffic","放大地图以加载实时交通","लाइव यातायात लोड करने के लिए ज़ूम इन करें","Acerca el mapa para cargar tráfico en vivo","Zoomez pour charger le trafic en direct","قرّب الخريطة لتحميل الحركة المباشرة","লাইভ ট্রাফিক লোড করতে জুম ইন করুন","Aproxime o mapa para carregar tráfego ao vivo","Увеличьте карту для загрузки трафика","Hineinzoomen, um Live-Flugverkehr zu laden"}
             ,{"clear_history","Clear track history","清除轨迹历史","ट्रैक इतिहास साफ़ करें","Borrar historial de rutas","Effacer l’historique des traces","مسح سجل المسارات","ট্র্যাক ইতিহাস মুছুন","Limpar histórico de trilhas","Очистить историю треков","Spurverlauf löschen"}
             ,{"cycle_map_style","Change map style","更改地图样式","मानचित्र शैली बदलें","Cambiar estilo del mapa","Changer le style de carte","تغيير نمط الخريطة","মানচিত্রের ধরন বদলান","Alterar estilo do mapa","Изменить стиль карты","Kartenstil wechseln"}
             ,{"distance","Distance","距离","दूरी","Distancia","Distance","المسافة","দূরত্ব","Distância","Расстояние","Entfernung"}

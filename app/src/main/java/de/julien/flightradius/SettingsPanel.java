@@ -72,8 +72,6 @@ final class SettingsPanel extends ScrollView {
                 new String[]{L10n.t(host, "aviation_units"), L10n.t(host, "metric_units")}, true);
 
         section(root, L10n.t(host, "live_section"));
-        addDropdown(root, L10n.t(host, "refresh_rate"), AppPreferences.KEY_REFRESH_SECONDS,
-                new int[]{1}, new String[]{"ADSB.lol: 1 s"});
         addDropdown(root, L10n.t(host, "tracker_tap"), AppPreferences.KEY_TRACKER,
                 new String[]{"flightradar", "adsbexchange"},
                 new String[]{"Flightradar24", "ADS-B Exchange"}, false);
@@ -230,8 +228,6 @@ final class SettingsPanel extends ScrollView {
                 MapPreferences.COLORED_PLANES, true);
         addMapSwitch(root, MapL10n.t(host, "colored_tracks"),
                 MapPreferences.COLORED_TRAILS, true);
-        addMapSwitch(root, MapL10n.t(host, "hardware_tracks"),
-                MapPreferences.HARDWARE_TRACKS, true);
 
         section(root, MapL10n.t(host, "labels_altitude"));
         addMapSwitch(root, MapL10n.t(host, "show_labels"),
@@ -240,16 +236,12 @@ final class SettingsPanel extends ScrollView {
                 MapPreferences.LABEL_UNITS, true);
         addMapSwitch(root, MapL10n.t(host, "smaller_labels"),
                 MapPreferences.SMALL_LABELS, true);
-        addMapSwitch(root, MapL10n.t(host, "smaller_wind_labels"),
-                MapPreferences.SMALL_WIND_LABELS, true);
         addMapSwitch(root, MapL10n.t(host, "geometric_alt"),
                 MapPreferences.GEOMETRIC_ALTITUDE, false);
         addMapSwitch(root, MapL10n.t(host, "egm_conversion"),
                 MapPreferences.EGM_CONVERSION, false);
         addMapSwitch(root, MapL10n.t(host, "qnh_correct"),
                 MapPreferences.QNH_CORRECTION, false);
-        addMapSwitch(root, MapL10n.t(host, "live_track_utc"),
-                MapPreferences.LIVE_TRACK_UTC, false);
         addMapSwitch(root, MapL10n.t(host, "historic_track_utc"),
                 MapPreferences.HISTORIC_TRACK_UTC, true);
 

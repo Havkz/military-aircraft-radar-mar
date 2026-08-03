@@ -422,7 +422,9 @@ public class MainActivity extends Activity {
 
     private void updateMapVisibility() {
         boolean mapVisible = activityResumed && currentPage == 1;
-        MonitorService.setMapVisible(mapVisible);
+        if (mapPanel != null) mapPanel.setPageVisible(mapVisible);
+        else MonitorService.setMapVisible(mapVisible);
+        if (pageHost != null) pageHost.setSwipeEnabled(currentPage != 1);
         if (mapVisible && !MonitorService.isRunning()) {
             // The map is a live-data feature, not merely a viewer for an already running
             // alert service. Starting it here also recovers after Android stops the service
