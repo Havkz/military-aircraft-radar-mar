@@ -14,6 +14,7 @@ final class MapPreferences {
     static final String COLORED_PLANES = "map_colored_planes";
     static final String COLORED_TRAILS = "map_colored_trails";
     static final String HARDWARE_TRACKS = "map_hardware_tracks";
+    static final String SHOW_LABELS = "map_show_labels";
     static final String LABEL_UNITS = "map_label_units";
     static final String SMALL_LABELS = "map_small_labels";
     static final String SMALL_WIND_LABELS = "map_small_wind_labels";
@@ -41,7 +42,7 @@ final class MapPreferences {
 
     private static final String[] KEYS = {
             TEXT_SCALE, ICON_SCALE, DARK, DARKER, DIM, COLORED_PLANES,
-            COLORED_TRAILS, HARDWARE_TRACKS, LABEL_UNITS, SMALL_LABELS,
+            COLORED_TRAILS, HARDWARE_TRACKS, SHOW_LABELS, LABEL_UNITS, SMALL_LABELS,
             SMALL_WIND_LABELS,
             GEOMETRIC_ALTITUDE, EGM_CONVERSION, QNH_CORRECTION,
             TRACK_UTC, LIVE_TRACK_UTC, HISTORIC_TRACK_UTC,
@@ -67,6 +68,7 @@ final class MapPreferences {
             result.put("coloredPlanes", preferences.getBoolean(COLORED_PLANES, true));
             result.put("coloredTrails", preferences.getBoolean(COLORED_TRAILS, true));
             result.put("hardwareTracks", preferences.getBoolean(HARDWARE_TRACKS, true));
+            result.put("showLabels", preferences.getBoolean(SHOW_LABELS, false));
             result.put("labelUnits", preferences.getBoolean(LABEL_UNITS, true));
             result.put("smallLabels", preferences.getBoolean(SMALL_LABELS, true));
             result.put("smallWindLabels",
