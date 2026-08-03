@@ -16,7 +16,7 @@ import java.util.zip.GZIPInputStream;
 
 final class AircraftPhotoLookup {
     private static final String USER_AGENT =
-            "MilitaryAircraftRadar/1.2.20 (+https://github.com/Havkz/military-aircraft-radar-mar)";
+            "MilitaryAircraftRadar/1.2.21 (+https://github.com/Havkz/military-aircraft-radar-mar)";
 
     private AircraftPhotoLookup() { }
 
@@ -96,8 +96,10 @@ final class AircraftPhotoLookup {
             if (image.isEmpty()) continue;
             String artist = metadataValue(metadata, "Artist")
                     .replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim();
-            return photo(image, info.optString("descriptionurl"),
+            JSONObject fallback = photo(image, info.optString("descriptionurl"),
                     "Wikimedia Commons", artist);
+            fallback.put("uncertain", true);
+            return fallback;
         }
         return new JSONObject();
     }
