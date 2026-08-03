@@ -79,6 +79,7 @@ final class SettingsPanel extends ScrollView {
                 new String[]{"Flightradar24", "ADS-B Exchange"}, false);
         addTrackerHint(root);
         addAdsbExchangeKey(root);
+        addAirplanesRate(root);
         addSwitch(root, L10n.t(host, "vibration"));
 
         addMapSettings(root);
@@ -174,6 +175,41 @@ final class SettingsPanel extends ScrollView {
             dialog.show();
         });
         root.addView(row, cardParams());
+    }
+
+    private void addAirplanesRate(LinearLayout root) {
+        LinearLayout row = settingRow(MapL10n.t(host, "airplanes_rate"));
+        TextView value = (TextView) row.getChildAt(1);
+        Runnable refreshValue = () -> value.setText(prefs.getBoolean(
+                AppPreferences.KEY_AIRPLANES_BUSINESS_RATE, false)
+                ? MapL10n.t(host, "business_rate") + "  ✓"
+                : MapL10n.t(host, "free_rate") + "  ›");
+        refreshValue.run();
+        row.setOnClickListener(view -> {
+            if (prefs.getBoolean(AppPreferences.KEY_AIRPLANES_BUSINESS_RATE, false)) {
+                setAirplanesBusinessRate(false);
+                refreshValue.run();
+                return;
+            }
+            new AlertDialog.Builder(host)
+                    .setTitle(MapL10n.t(host, "business_rate"))
+                    .setMessage(MapL10n.t(host, "business_rate_warning"))
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .setPositiveButton(MapL10n.t(host, "enable"), (dialog, which) -> {
+                        setAirplanesBusinessRate(true);
+                        refreshValue.run();
+                    })
+                    .show();
+        });
+        root.addView(row, cardParams());
+    }
+
+    private void setAirplanesBusinessRate(boolean enabled) {
+        prefs.edit().putBoolean(AppPreferences.KEY_AIRPLANES_BUSINESS_RATE, enabled).apply();
+        if (prefs.getBoolean(AppPreferences.KEY_RUNNING, false)) {
+            host.startService(new Intent(host, MonitorService.class)
+                    .setAction(MonitorService.ACTION_SOURCES_CHANGED));
+        }
     }
 
     private void addMapSettings(LinearLayout root) {

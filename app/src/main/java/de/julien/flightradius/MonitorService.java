@@ -63,6 +63,7 @@ public class MonitorService extends Service implements LocationListener {
     private static final long ADSB_LOL_MILITARY_REFRESH_MS = 60_000L;
     private static final long ADSB_LOL_BASE_REFRESH_MS = 1_000L;
     private static final long AIRPLANES_REFRESH_MS = 180_000L;
+    private static final long AIRPLANES_BUSINESS_REFRESH_MS = 1_200L;
     private static final long ADSBX_REFRESH_MS = 30_000L;
     private static final double MAP_MAX_POSITION_AGE_SECONDS = 210d;
     private static final int EXPANDED_MAP_RADIUS_NM = 250;
@@ -112,6 +113,11 @@ public class MonitorService extends Service implements LocationListener {
         if (expandedMap) return EXPANDED_MAP_RADIUS_NM;
         return Math.max(1, Math.min(EXPANDED_MAP_RADIUS_NM,
                 (int) Math.ceil(alertRadiusKm / NAUTICAL_MILE_KM)));
+    }
+
+    static long airplanesBaseRefreshMs(boolean businessRateAuthorized) {
+        return businessRateAuthorized
+                ? AIRPLANES_BUSINESS_REFRESH_MS : AIRPLANES_REFRESH_MS;
     }
 
     private final Runnable pollTask = new Runnable() {
@@ -505,8 +511,10 @@ public class MonitorService extends Service implements LocationListener {
     }
 
     private long nextAirplanesDelayMs() {
+        boolean businessRate = AppPreferences.get(this).getBoolean(
+                AppPreferences.KEY_AIRPLANES_BUSINESS_RATE, false);
         return airplanesBackoff.delayMs(
-                AIRPLANES_REFRESH_MS, System.currentTimeMillis());
+                airplanesBaseRefreshMs(businessRate), System.currentTimeMillis());
     }
 
     private JSONArray awaitOptional(Future<JSONArray> future) {

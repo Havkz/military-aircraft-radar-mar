@@ -32,7 +32,7 @@ Any future use of Flightradar24 content or automated access would require a new 
 
 ## Airplanes.live
 
-Android requests Airplanes.live's documented nearby-aircraft API directly. The free plan is limited to 500 requests per day and is described as non-commercial with no service-level agreement. MAR therefore limits this source to one request every 180 seconds. The request area expands to the documented 250 NM endpoint maximum only while the map tab is visible; this does not change notification eligibility. Data is merged and deduplicated locally and is not republished as a separate database.
+Android requests Airplanes.live's documented nearby-aircraft API directly. The free plan is limited to 500 requests per day and is described as non-commercial with no service-level agreement. MAR therefore defaults this source to one request every 180 seconds. A separate 1.2-second Business-rate option is disabled by default, carries an explicit warning, and is intended only for users whose account or IP Airplanes.live has authorized for that rate. The request area expands to the documented 250 NM endpoint maximum only while the map tab is visible; this does not change notification eligibility. Data is merged and deduplicated locally and is not republished as a separate database.
 
 - API guide: https://airplanes.live/api-guide/
 - API plans: https://airplanes.live/api/

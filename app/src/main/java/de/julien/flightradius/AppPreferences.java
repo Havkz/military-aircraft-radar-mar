@@ -26,6 +26,7 @@ final class AppPreferences {
     static final String KEY_AIRCRAFT_JSON = "aircraft_json";
     static final String KEY_AIRCRAFT_HISTORY_JSON = "aircraft_history_json";
     static final String KEY_AIRPLANES_LAST_ATTEMPT_MS = "airplanes_last_attempt_ms";
+    static final String KEY_AIRPLANES_BUSINESS_RATE = "airplanes_business_rate";
     static final String KEY_OWN_LATITUDE = "own_latitude";
     static final String KEY_OWN_LONGITUDE = "own_longitude";
     static final String KEY_APP_VERSION = "app_version";
