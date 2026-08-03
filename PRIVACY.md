@@ -1,6 +1,6 @@
 # Privacy
 
-Last updated: July 23, 2026
+Last updated: August 3, 2026
 
 Military Aircraft Radar (MAR) is an open-source Android and iOS application. It does not include advertising, analytics, crash-reporting, or user-account SDKs, and the project maintainer does not operate a backend service for the app.
 
@@ -8,17 +8,23 @@ Military Aircraft Radar (MAR) is an open-source Android and iOS application. It 
 
 MAR processes the device's current location, the configured monitoring radius, aircraft telemetry returned by the data provider, notification state, and app preferences. These values are used to perform nearby-aircraft monitoring and render the app's live views.
 
-App preferences and recent aircraft state are stored locally in platform-managed application storage. They can be removed by clearing the Android app's data or uninstalling the app.
+App preferences and recent aircraft state are stored locally in platform-managed application storage. An optional ADS-B Exchange API key is stored in Android's private no-backup directory. These values can be removed by clearing the Android app's data or uninstalling the app.
 
 ## Data sent to third parties
 
-While monitoring is active, Android and iOS send the device latitude, longitude, and selected radius to ADSB.lol's nearby-aircraft endpoint. They also request ADSB.lol's global military feed, which does not include the device location in its request. The applications merge, classify, and radius-filter the returned aircraft locally. ADSB.lol can also receive the connection's IP address.
+While monitoring is active, Android sends the device latitude, longitude, and selected radius to ADSB.lol and Airplanes.live nearby-aircraft endpoints. It also requests ADSB.lol's global military feed, which does not include device location. If the user configures an official ADS-B Exchange API key, Android also sends the same nearby query and that credential directly to the ADS-B Exchange API. iOS currently uses ADSB.lol. Each provider can also receive the connection's IP address.
+
+When the Android map tab is first opened, its WebView loads Leaflet 1.9.4 from the unpkg CDN and requests OpenStreetMap tiles for the visible area. Those services therefore receive the requested resource or tile coordinates, network metadata, and IP address. MAR does not prefetch map areas for offline use.
 
 When the user chooses to open an aircraft in Flightradar24 or ADS-B Exchange, Android opens the selected service's app or website with aircraft-identifying or map-position information in the link. Those services process data under their own terms and privacy policies.
 
 Official provider information:
 
 - ADSB.lol privacy and license: https://www.adsb.lol/privacy-license/
+- Airplanes.live privacy: https://airplanes.live/privacy/
+- Airplanes.live API terms and limits: https://airplanes.live/api-guide/
+- OpenStreetMap tile usage policy: https://operations.osmfoundation.org/policies/tiles/
+- unpkg privacy policy: https://www.cloudflare.com/privacypolicy/
 - Flightradar24 Terms of Service: https://www.flightradar24.com/terms-of-service
 - ADS-B Exchange / JETNET Terms of Use: https://www.jetnet.com/legal/terms-of-use
 

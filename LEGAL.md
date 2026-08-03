@@ -1,6 +1,6 @@
 # Legal and data-source notice
 
-Last reviewed: July 23, 2026
+Last reviewed: August 3, 2026
 
 This document describes how Military Aircraft Radar (MAR) currently interacts with external data and tracker services. It is provided for transparency and is not legal advice. Service terms and licenses may change; maintainers and distributors remain responsible for reviewing the current official terms.
 
@@ -30,9 +30,17 @@ The plain-text name “Flightradar24” is used only to identify the optional ex
 
 Any future use of Flightradar24 content or automated access would require a new legal review and, where applicable, an authorized API agreement.
 
+## Airplanes.live
+
+Android requests Airplanes.live's documented nearby-aircraft API directly. The free plan is limited to 500 requests per day and is described as non-commercial with no service-level agreement. MAR therefore limits this source to one request every 180 seconds. Data is merged and deduplicated locally and is not republished as a separate database.
+
+- API guide: https://airplanes.live/api-guide/
+- API plans: https://airplanes.live/api/
+- Privacy notice: https://airplanes.live/privacy/
+
 ## ADS-B Exchange
 
-MAR does not request, scrape, embed, copy, cache, or redistribute ADS-B Exchange data. After an explicit user action, MAR opens an aircraft page in the ADS-B Exchange installed web app or a web browser. ADS-B Exchange then displays its own service under its own terms.
+MAR never scrapes ADS-B Exchange. Android can query its official API only after the user supplies their own valid API key; otherwise ADS-B Exchange is used solely as an outbound aircraft-page destination. Responses are cached briefly on-device for the live map and alerts and are not published as a separate database.
 
 The full plain-text name “ADS-B Exchange” is used only to identify the optional external destination. MAR does not use the ADS-B Exchange logo and does not claim affiliation, partnership, sponsorship, or endorsement.
 
@@ -40,7 +48,14 @@ The full plain-text name “ADS-B Exchange” is used only to identify the optio
 - ADS-B Exchange data-use policy: https://support.adsbexchange.com/hc/en-us/articles/37364077703693-What-is-ADS-B-Exchange-s-data-use-policy
 - ADS-B Exchange media and attribution guidance: https://www.adsbexchange.com/about/media-kit/
 
-ADS-B Exchange attribution is required if its data, maps, or screenshots are republished. MAR currently republishes none of those materials; ADS-B Exchange is an outbound destination only.
+ADS-B Exchange attribution and data-use requirements apply to authenticated API use and any republication. Users and distributors are responsible for using a key and plan that authorize their usage.
+
+## OpenStreetMap and Leaflet
+
+The Android map loads Leaflet 1.9.4 from unpkg and requests standard OpenStreetMap tiles only while the map is visible. It keeps visible OpenStreetMap attribution, uses normal WebView caching, identifies the application in its user agent, and does not bulk-download or prefetch tiles.
+
+- OpenStreetMap tile usage policy: https://operations.osmfoundation.org/policies/tiles/
+- Leaflet: https://leafletjs.com/
 
 ## Trademarks and independence
 

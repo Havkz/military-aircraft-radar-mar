@@ -79,7 +79,7 @@ public class SettingsActivity extends Activity {
 
         section(root, L10n.t(this, "live_section"));
         addDropdown(root, L10n.t(this, "refresh_rate"), AppPreferences.KEY_REFRESH_SECONDS,
-                new int[]{10, 30, 60}, new String[]{"10 s", "30 s", "60 s"});
+                new int[]{1}, new String[]{"ADSB.lol: 1 s"});
         addDropdown(root, L10n.t(this, "tracker_tap"),
                 AppPreferences.KEY_TRACKER,
                 new String[]{"flightradar", "adsbexchange"},

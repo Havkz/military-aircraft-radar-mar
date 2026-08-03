@@ -11,12 +11,27 @@ The aircraft data is provided as-is and may be incomplete or inaccurate. MAR's M
 
 ## Google Material Symbols
 
-The navigation icons `radar`, `flight`, and `settings` are from Google's Material Design Icons repository and are used under the Apache License 2.0.
+The navigation icons `radar`, `map`, `flight`, and `settings` are from Google's Material Design Icons repository and are used under the Apache License 2.0.
 
 - Source: https://github.com/google/material-design-icons
 - License: https://github.com/google/material-design-icons/blob/master/LICENSE
 
 The vector path data is embedded locally so the app does not contact Google or load remote assets at runtime.
+
+## Airplanes.live aircraft data
+
+Android retrieves nearby-aircraft data from the documented Airplanes.live API under its published API conditions and rate limits.
+
+- API guide: https://airplanes.live/api-guide/
+- Privacy: https://airplanes.live/privacy/
+
+## Leaflet and OpenStreetMap
+
+The Android map loads Leaflet 1.9.4, released under the BSD 2-Clause License, and displays OpenStreetMap standard tiles with visible attribution.
+
+- Leaflet source and license: https://github.com/Leaflet/Leaflet
+- OpenStreetMap copyright: https://www.openstreetmap.org/copyright
+- Tile usage policy: https://operations.osmfoundation.org/policies/tiles/
 
 ## External tracker names
 

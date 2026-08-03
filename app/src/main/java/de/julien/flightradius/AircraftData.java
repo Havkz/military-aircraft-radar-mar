@@ -11,14 +11,34 @@ import java.util.Map;
 
 final class AircraftData {
     private static final double MAX_LAST_POSITION_AGE_SECONDS = 60d;
+    private static final String[] POSITION_FIELDS = {
+            "lat", "lon", "seen_pos", "lastPosition", "alt_baro", "alt_geom",
+            "gs", "track", "baro_rate", "geom_rate", "type", "mlat", "tisb",
+            "_cache_age_seconds"
+    };
 
     private AircraftData() { }
 
-    static JSONArray mergeByHex(JSONArray primary, JSONArray supplemental) throws JSONException {
+    static JSONArray tagSource(JSONArray aircraft, String source, double cacheAgeSeconds)
+            throws JSONException {
+        JSONArray tagged = aircraft == null ? new JSONArray() : aircraft;
+        for (int i = 0; i < tagged.length(); i++) {
+            JSONObject plane = tagged.optJSONObject(i);
+            if (plane == null) continue;
+            JSONArray sources = new JSONArray();
+            sources.put(source);
+            plane.put("sources", sources);
+            plane.put("_cache_age_seconds", Math.max(0d, cacheAgeSeconds));
+        }
+        return tagged;
+    }
+
+    static JSONArray mergeByHex(JSONArray... feeds) throws JSONException {
         Map<String, JSONObject> byHex = new LinkedHashMap<>();
         JSONArray withoutHex = new JSONArray();
-        appendMerged(byHex, withoutHex, primary);
-        appendMerged(byHex, withoutHex, supplemental);
+        if (feeds != null) {
+            for (JSONArray feed : feeds) appendMerged(byHex, withoutHex, feed);
+        }
         JSONArray merged = new JSONArray();
         for (JSONObject aircraft : byHex.values()) merged.put(aircraft);
         for (int i = 0; i < withoutHex.length(); i++) merged.put(withoutHex.opt(i));
@@ -26,19 +46,45 @@ final class AircraftData {
     }
 
     static double[] recentPosition(JSONObject aircraft) {
+        return recentPosition(aircraft, MAX_LAST_POSITION_AGE_SECONDS);
+    }
+
+    static double[] recentPosition(JSONObject aircraft, double maxAgeSeconds) {
         if (aircraft == null) return null;
+        double cacheAge = aircraft.optDouble("_cache_age_seconds", 0d);
         double latitude = aircraft.optDouble("lat", Double.NaN);
         double longitude = aircraft.optDouble("lon", Double.NaN);
-        if (validPosition(latitude, longitude)) return new double[]{latitude, longitude};
+        double seenPosition = aircraft.optDouble("seen_pos",
+                aircraft.optDouble("seen", 0d));
+        if (seenPosition >= 0d && seenPosition + cacheAge <= maxAgeSeconds
+                && validPosition(latitude, longitude)) return new double[]{latitude, longitude};
 
         JSONObject lastPosition = aircraft.optJSONObject("lastPosition");
         if (lastPosition == null) return null;
         double ageSeconds = lastPosition.optDouble("seen_pos", Double.POSITIVE_INFINITY);
         latitude = lastPosition.optDouble("lat", Double.NaN);
         longitude = lastPosition.optDouble("lon", Double.NaN);
-        if (ageSeconds < 0d || ageSeconds > MAX_LAST_POSITION_AGE_SECONDS
+        if (ageSeconds < 0d || ageSeconds + cacheAge > maxAgeSeconds
                 || !validPosition(latitude, longitude)) return null;
         return new double[]{latitude, longitude};
+    }
+
+    static String displayName(JSONObject aircraft) {
+        if (aircraft == null) return "";
+        String callsign = aircraft.optString("flight", "").trim();
+        if (!callsign.isEmpty()) return callsign;
+        String registration = aircraft.optString("r", "").trim();
+        if (!registration.isEmpty()) return registration;
+        return aircraft.optString("hex", "").replace("~", "")
+                .trim().toUpperCase(Locale.US);
+    }
+
+    static boolean isRotorcraft(JSONObject aircraft) {
+        if (aircraft == null) return false;
+        if ("A7".equalsIgnoreCase(aircraft.optString("category", ""))) return true;
+        String description = (aircraft.optString("desc", "") + " "
+                + aircraft.optString("typeDescription", "")).toUpperCase(Locale.US);
+        return description.contains("HELICOPTER") || description.contains("ROTORCRAFT");
     }
 
     private static void appendMerged(Map<String, JSONObject> byHex, JSONArray withoutHex,
@@ -57,15 +103,62 @@ final class AircraftData {
             if (existing == null) {
                 byHex.put(hex, aircraft);
             } else {
+                mergeSources(existing, aircraft);
+                existing.put("dbFlags", existing.optInt("dbFlags", 0)
+                        | aircraft.optInt("dbFlags", 0));
+                if (positionAgeSeconds(aircraft) < positionAgeSeconds(existing)) {
+                    for (String key : POSITION_FIELDS) {
+                        if (aircraft.has(key) && !aircraft.isNull(key)) {
+                            existing.put(key, aircraft.opt(key));
+                        }
+                    }
+                }
                 Iterator<String> keys = aircraft.keys();
                 while (keys.hasNext()) {
                     String key = keys.next();
-                    if (!existing.has(key) || existing.isNull(key)) {
+                    Object incoming = aircraft.opt(key);
+                    boolean missing = !existing.has(key) || existing.isNull(key);
+                    boolean emptyText = incoming instanceof String
+                            && !((String) incoming).isEmpty()
+                            && existing.optString(key, "").isEmpty();
+                    if (missing || emptyText) {
                         existing.put(key, aircraft.opt(key));
                     }
                 }
             }
         }
+    }
+
+    private static void mergeSources(JSONObject existing, JSONObject incoming)
+            throws JSONException {
+        JSONArray merged = new JSONArray();
+        Map<String, Boolean> seen = new LinkedHashMap<>();
+        appendSources(merged, seen, existing.optJSONArray("sources"));
+        appendSources(merged, seen, incoming.optJSONArray("sources"));
+        existing.put("sources", merged);
+    }
+
+    private static void appendSources(JSONArray target, Map<String, Boolean> seen,
+                                      JSONArray sources) {
+        if (sources == null) return;
+        for (int i = 0; i < sources.length(); i++) {
+            String source = sources.optString(i, "");
+            if (!source.isEmpty() && seen.put(source, Boolean.TRUE) == null) target.put(source);
+        }
+    }
+
+    private static double positionAgeSeconds(JSONObject aircraft) {
+        if (aircraft == null) return Double.POSITIVE_INFINITY;
+        double cacheAge = aircraft.optDouble("_cache_age_seconds", 0d);
+        if (validPosition(aircraft.optDouble("lat", Double.NaN),
+                aircraft.optDouble("lon", Double.NaN))) {
+            return Math.max(0d, aircraft.optDouble("seen_pos",
+                    aircraft.optDouble("seen", 0d))) + cacheAge;
+        }
+        JSONObject last = aircraft.optJSONObject("lastPosition");
+        if (last == null || !validPosition(last.optDouble("lat", Double.NaN),
+                last.optDouble("lon", Double.NaN))) return Double.POSITIVE_INFINITY;
+        return Math.max(0d, last.optDouble("seen_pos", Double.POSITIVE_INFINITY)) + cacheAge;
     }
 
     private static boolean validPosition(double latitude, double longitude) {

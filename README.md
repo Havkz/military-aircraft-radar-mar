@@ -5,9 +5,9 @@
 [![iOS 16+](https://img.shields.io/badge/iOS-16%2B-527AA3?logo=apple&logoColor=white)](ios/README.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-D98245.svg)](LICENSE)
 
-Military Aircraft Radar is an open-source mobile app that shows nearby aircraft identified as military by its live ADS-B data provider. It can notify you when a matching aircraft enters your selected radius and can open that aircraft in an external flight tracker.
+Military Aircraft Radar is an open-source mobile app that shows nearby aircraft identified as military by multiple live ADS-B data providers. It can notify you when a matching aircraft enters your selected radius and can open that aircraft in an external flight tracker.
 
-No account, API key, subscription, advertising SDK, or analytics SDK is required.
+No account, subscription, advertising SDK, or analytics SDK is required. An ADS-B Exchange API key is optional; ADSB.lol and Airplanes.live work without one.
 
 > [!IMPORTANT]
 > MAR is an independent hobby project. It is not affiliated with ADSB.lol, Flightradar24, ADS-B Exchange, any armed forces, or any government organization. Do not use MAR for navigation, safety-critical decisions, or operational purposes.
@@ -38,10 +38,10 @@ There is currently no one-tap public iOS installation. Users familiar with Apple
 1. Choose a radius. The slider marks **20–30 km** as a practical recommended range; the label follows the selected unit system.
 2. Press **Start monitoring**. The radar begins moving only after a live data connection is available.
 3. Keep the foreground-service notification enabled while monitoring is active.
-4. Open **Settings** to choose units, language, theme, refresh interval, vibration, and the tracker used when an aircraft notification is selected.
+4. Open **Settings** to choose units, language, theme, vibration, the tracker used when an aircraft notification is selected, and an optional ADS-B Exchange API key.
 5. ADS-B Exchange is recommended as the notification target because some aircraft may not be visible on Flightradar24.
 
-MAR stops monitoring and removes its notifications when its Android app task is closed. After a phone restart, MAR can remind you to start monitoring again; it does not silently restart continuous monitoring.
+On Android, closing the app screen no longer stops monitoring. MAR uses a foreground service, short wake locks only around scans, and sticky service restart behavior. Keep the persistent service notification enabled and exempt MAR from aggressive manufacturer battery optimization if delayed alerts persist. After a phone restart, MAR reminds you to start monitoring again.
 
 ## What notifications do
 
@@ -59,7 +59,7 @@ No. ADS-B and MLAT coverage is incomplete. Some aircraft do not transmit a usabl
 
 ### Is the displayed information truly live?
 
-MAR polls current data at the selected interval of 10, 30, or 60 seconds. “Live” therefore means regularly refreshed current data, not a continuous zero-delay stream.
+MAR polls ADSB.lol every second unless a 429 response activates the temporary adaptive backoff. Airplanes.live is checked every 180 seconds on the free plan. “Live” means regularly refreshed provider data, not a continuous zero-delay stream.
 
 ### Why is location permission required?
 
@@ -75,9 +75,11 @@ Some aircraft may not be visible on Flightradar24. ADS-B Exchange can therefore 
 
 ## Main features
 
-- Nearby military-contact monitoring using ADSB.lol live data
+- Merged nearby-aircraft monitoring using ADSB.lol and Airplanes.live
+- Optional authenticated ADS-B Exchange feed using the user's own official API key
+- Interactive OpenStreetMap aircraft map with provider deduplication by ICAO hex address
 - Adjustable 10–300 km radius with a marked 20–30 km recommendation
-- 10, 30, or 60 second refresh intervals
+- One-second ADSB.lol refresh with automatic 429 backoff in 0.5-second steps
 - Continuously updated per-aircraft notifications
 - Five-minute notification-dismissal cooldown
 - Animated radar, aircraft history, and settings pages with swipe navigation
@@ -95,12 +97,14 @@ Some aircraft may not be visible on Flightradar24. ADS-B Exchange can therefore 
 ### Data flow
 
 1. Android or iOS provides the device's current location while monitoring is active.
-2. MAR requests the nearby-aircraft and military feeds from ADSB.lol over HTTPS.
+2. MAR requests nearby-aircraft data from ADSB.lol and Airplanes.live over HTTPS. If configured, it also requests ADS-B Exchange through its official authenticated API.
 3. MAR calculates the distance to each returned aircraft locally from its coordinates.
 4. Contacts inside the configured radius update the radar, aircraft list, session history, and notifications.
 5. Tracker links are opened only when the user explicitly selects an aircraft or notification.
 
-Both platforms merge the nearby-aircraft response with ADSB.lol's military feed and remove duplicates by ICAO hex address. A recent position up to 60 seconds old can bridge short MLAT position dropouts; older or invalid positions are rejected. MAR accepts an aircraft when ADSB.lol supplies the military `dbFlags` bit, when its ICAO type designator identifies a purpose-built military aircraft, or when its callsign matches a recognized military prefix. The type list deliberately excludes common mixed-use civilian airframes to limit false alerts. Flightradar24 and ADS-B Exchange are external viewing destinations only; MAR does not scrape either service.
+Android merges ADSB.lol, Airplanes.live, and optional authenticated ADS-B Exchange responses and removes duplicates by ICAO hex address. It may retain a provider-cached position for up to 210 seconds so an Airplanes.live-only contact remains present until that rate-limited source can be checked again. MAR accepts an aircraft when a provider supplies the military `dbFlags` bit, when its ICAO type identifies a purpose-built military aircraft, when its callsign matches a recognized military prefix, or when its German military registration matches the official `NN+NN` format. Empty callsigns fall back to registration or ICAO hex. The type list deliberately excludes common mixed-use civilian airframes to limit false alerts. MAR never scrapes provider websites.
+
+The free Airplanes.live plan permits 500 requests per day, so Android polls it no more than once every 180 seconds (480 requests per full day). ADSB.lol is requested every second. After an HTTP 429 response its interval increases by 0.5 seconds for one minute; another 429 adds another 0.5 seconds and renews that minute. ADS-B Exchange is disabled until the user supplies an official API key in Settings.
 
 ### Accuracy limitations
 
@@ -121,6 +125,7 @@ Aircraft data may be missing, delayed, duplicated, or incorrect. Military classi
 | Fine/coarse location | Calculate the distance from the device to aircraft |
 | Notifications | Display the required service status and aircraft alerts |
 | Foreground service/location | Keep active monitoring running under Android restrictions |
+| Wake lock | Keep the CPU awake briefly while an active scan finishes |
 | Vibration | Provide optional vibration for a newly detected contact |
 | Receive boot completed | Offer a reminder to restart monitoring after a reboot |
 
@@ -164,15 +169,15 @@ CONTRIBUTING.md      Development and contribution guide
 
 ## Privacy
 
-MAR contains no analytics, advertising, crash-reporting, or user-account SDKs. It has no developer-operated server. While monitoring is active, location-related request data is sent directly from the device to ADSB.lol. Selecting an external tracker transfers aircraft or map-position information to that service.
+MAR contains no analytics, advertising, crash-reporting, or user-account SDKs. It has no developer-operated server. While monitoring is active, location-related request data is sent directly from the device to ADSB.lol and Airplanes.live, and to ADS-B Exchange only when an API key is configured. Viewing the map requests OpenStreetMap tiles for the visible area. Selecting an external tracker transfers aircraft or map-position information to that service.
 
 Read the complete [privacy notice](PRIVACY.md) before using or redistributing the app. ADSB.lol, Flightradar24, ADS-B Exchange, Apple, Google, and device manufacturers operate under their own terms and privacy policies.
 
 ## Legal and data-source notices
 
-MAR contains information from [ADSB.lol](https://www.adsb.lol/), which is made available under the [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/). The app includes this attribution in Settings under **Legal & Data Sources**.
+MAR combines information from [ADSB.lol](https://www.adsb.lol/) and [Airplanes.live](https://airplanes.live/), and can optionally use the official authenticated ADS-B Exchange API. Map tiles are provided by OpenStreetMap with visible attribution. The app includes provider notices in Settings under **Legal & Data Sources**.
 
-Flightradar24 and ADS-B Exchange are optional external destinations only. MAR does not retrieve, scrape, embed, or redistribute their data and does not use their logos. Their names and trademarks belong to their respective owners; no affiliation or endorsement is claimed.
+MAR does not scrape Flightradar24, ADS-B Exchange, Airplanes.live, or any other provider website. Flightradar24 remains an optional external destination. Provider names and trademarks belong to their respective owners; no affiliation or endorsement is claimed.
 
 Read [LEGAL.md](LEGAL.md) for the provider-by-provider review, official terms, and conditions that forks or future integrations must preserve.
 

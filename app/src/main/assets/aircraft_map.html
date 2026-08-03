@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline' https://unpkg.com; script-src 'self' 'unsafe-inline' https://unpkg.com; img-src data: https://tile.openstreetmap.org; connect-src https://tile.openstreetmap.org">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIINfQ3ynBvKGTgMZbMZFGpGis3LZ6lPMZc=" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <style>
+    html,body,#map{height:100%;margin:0;background:#071018;font:13px sans-serif}
+    .leaflet-container{background:#071018}
+    .aircraft{width:22px;height:22px;line-height:22px;text-align:center;border-radius:50%;color:#071018;font-weight:900;border:2px solid rgba(255,255,255,.85);box-shadow:0 1px 6px #000}
+    .civil{background:#41a7ff}.military{background:#ff9f43}.own{background:#72f1b8}
+    .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#101b25;color:#f1f6fa}
+    .leaflet-control-attribution{font-size:10px!important}
+    .empty{position:absolute;z-index:500;left:16px;right:16px;top:16px;padding:11px 14px;border-radius:12px;background:rgba(7,16,24,.88);color:#d7e3eb;text-align:center;pointer-events:none}
+  </style>
+</head>
+<body>
+<div id="map"></div><div id="empty" class="empty">Waiting for live aircraft positions …</div>
+<script>
+  const map=L.map('map',{zoomControl:true,preferCanvas:true}).setView([51,10],6);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    maxZoom:18,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  }).addTo(map);
+  const aircraftLayer=L.layerGroup().addTo(map), ownLayer=L.layerGroup().addTo(map);
+  let centered=false;
+  const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const finite=v=>typeof v==='number'&&Number.isFinite(v);
+  window.marUpdate=function(raw,ownLat,ownLon,radiusKm){
+    let aircraft=[]; try{aircraft=JSON.parse(raw)||[]}catch(e){}
+    aircraftLayer.clearLayers(); ownLayer.clearLayers();
+    aircraft.forEach(a=>{
+      if(!finite(a.lat)||!finite(a.lon))return;
+      const military=!!a.military, rotor=!!a.rotorcraft;
+      const icon=L.divIcon({className:'',html:'<div class="aircraft '+(military?'military':'civil')+'" style="transform:rotate('+((a.track||0)-45)+'deg)">'+(rotor?'H':'➤')+'</div>',iconSize:[26,26],iconAnchor:[13,13]});
+      const name=a.display_name||a.callsign||a.registration||String(a.hex||'UNKNOWN').toUpperCase();
+      const sources=Array.isArray(a.sources)?a.sources.join(' + '):'';
+      L.marker([a.lat,a.lon],{icon}).bindPopup('<b>'+esc(name)+'</b><br>'+esc(a.registration||a.hex||'')+' · '+esc(a.type||a.description||'Unknown type')+'<br>'+esc((a.distance_km||0).toFixed(1))+' km · '+esc(a.altitude_ft==null?'Altitude n/a':Math.round(a.altitude_ft)+' ft')+'<br>Source: '+esc(sources)).addTo(aircraftLayer);
+    });
+    document.getElementById('empty').style.display=aircraft.length?'none':'block';
+    if(finite(ownLat)&&finite(ownLon)){
+      L.circleMarker([ownLat,ownLon],{radius:7,color:'#fff',weight:2,fillColor:'#72f1b8',fillOpacity:1}).bindPopup('Your position').addTo(ownLayer);
+      L.circle([ownLat,ownLon],{radius:radiusKm*1000,color:'#72f1b8',weight:1,fillOpacity:.025}).addTo(ownLayer);
+      if(!centered){map.fitBounds(L.circle([ownLat,ownLon],{radius:radiusKm*1000}).getBounds(),{padding:[18,18]});centered=true}
+    }
+  };
+</script>
+</body>
+</html>

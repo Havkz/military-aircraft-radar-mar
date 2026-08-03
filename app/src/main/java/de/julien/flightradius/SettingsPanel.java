@@ -2,6 +2,7 @@ package de.julien.flightradius;
 
 import android.app.Activity;
 import android.app.Dialog;
+import android.app.AlertDialog;
 import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -12,6 +13,8 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.view.Gravity;
 import android.view.Window;
+import android.text.InputType;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Switch;
@@ -69,11 +72,12 @@ final class SettingsPanel extends ScrollView {
 
         section(root, L10n.t(host, "live_section"));
         addDropdown(root, L10n.t(host, "refresh_rate"), AppPreferences.KEY_REFRESH_SECONDS,
-                new int[]{10, 30, 60}, new String[]{"10 s", "30 s", "60 s"});
+                new int[]{1}, new String[]{"ADSB.lol: 1 s"});
         addDropdown(root, L10n.t(host, "tracker_tap"), AppPreferences.KEY_TRACKER,
                 new String[]{"flightradar", "adsbexchange"},
                 new String[]{"Flightradar24", "ADS-B Exchange"}, false);
         addTrackerHint(root);
+        addAdsbExchangeKey(root);
         addSwitch(root, L10n.t(host, "vibration"));
 
         section(root, L10n.t(host, "information"));
@@ -81,7 +85,8 @@ final class SettingsPanel extends ScrollView {
         info.setOrientation(LinearLayout.VERTICAL);
         info.addView(label("Military Aircraft Radar - MAR", 16, text, Typeface.BOLD));
         TextView version = label("Version " + versionName()
-                + "\nADSB.lol\nFlightradar24 / ADS-B Exchange", 12, muted, Typeface.NORMAL);
+                + "\nADSB.lol + Airplanes.live\nADS-B Exchange (optional API key)",
+                12, muted, Typeface.NORMAL);
         version.setPadding(0, dp(8), 0, 0);
         version.setLineSpacing(0, 1.3f);
         info.addView(version);
@@ -131,6 +136,57 @@ final class SettingsPanel extends ScrollView {
         });
         row.addView(toggle);
         root.addView(row, cardParams());
+    }
+
+    private void addAdsbExchangeKey(LinearLayout root) {
+        LinearLayout row = settingRow("ADS-B Exchange API key");
+        TextView value = (TextView) row.getChildAt(1);
+        value.setText(ProviderCredentials.hasAdsbExchangeKey(host)
+                ? "Configured  ✓" : "Not configured  ›");
+        row.setOnClickListener(view -> {
+            EditText input = new EditText(host);
+            input.setSingleLine(true);
+            input.setHint("Official ADS-B Exchange API key");
+            input.setInputType(InputType.TYPE_CLASS_TEXT
+                    | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+            input.setText(ProviderCredentials.adsbExchangeKey(host));
+            input.setSelectAllOnFocus(true);
+            AlertDialog dialog = new AlertDialog.Builder(host)
+                    .setTitle("ADS-B Exchange API key")
+                    .setMessage("Optional. Stored only in the app's private, non-backed-up storage.")
+                    .setView(input)
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .setNeutralButton("Remove", null)
+                    .setPositiveButton("Save", null)
+                    .create();
+            dialog.setOnShowListener(ignored -> {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
+                    if (storeAdsbExchangeKey(input.getText().toString(), value)) dialog.dismiss();
+                });
+                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(button -> {
+                    if (storeAdsbExchangeKey("", value)) dialog.dismiss();
+                });
+            });
+            dialog.show();
+        });
+        root.addView(row, cardParams());
+    }
+
+    private boolean storeAdsbExchangeKey(String key, TextView value) {
+        try {
+            ProviderCredentials.setAdsbExchangeKey(host, key);
+            value.setText(ProviderCredentials.hasAdsbExchangeKey(host)
+                    ? "Configured  ✓" : "Not configured  ›");
+            if (prefs.getBoolean(AppPreferences.KEY_RUNNING, false)) {
+                host.startService(new Intent(host, MonitorService.class)
+                        .setAction(MonitorService.ACTION_SOURCES_CHANGED));
+            }
+            return true;
+        } catch (Exception error) {
+            android.widget.Toast.makeText(host, "Could not store API key",
+                    android.widget.Toast.LENGTH_LONG).show();
+            return false;
+        }
     }
 
     private void showDropdown(String title, String[] labels, int selected,
@@ -220,13 +276,20 @@ final class SettingsPanel extends ScrollView {
         TextView data = label(L10n.t(host, "legal_data"), 12, text, Typeface.NORMAL);
         data.setLineSpacing(0, 1.25f);
         legal.addView(data);
-        TextView trackers = label(L10n.t(host, "legal_trackers"),
+        String providerNotice = AppPreferences.isGerman(host)
+                ? "MAR kombiniert ADSB.lol und Airplanes.live. ADS-B Exchange wird nur mit einem von dir hinterlegten offiziellen API-Key abgefragt. Flightradar24 bleibt ein externer Link. Keine Zugehörigkeit oder Empfehlung durch die Anbieter."
+                : "MAR combines ADSB.lol and Airplanes.live. ADS-B Exchange is queried only with an official API key you provide. Flightradar24 remains an external link. No provider affiliation or endorsement.";
+        TextView trackers = label(providerNotice,
                 12, muted, Typeface.NORMAL);
         trackers.setLineSpacing(0, 1.25f);
         trackers.setPadding(0, dp(10), 0, dp(6));
         legal.addView(trackers);
         addLegalLink(legal, "ADSB.lol API / ODbL 1.0",
                 "https://www.adsb.lol/docs/open-data/api/");
+        addLegalLink(legal, "Airplanes.live API",
+                "https://airplanes.live/api-guide/");
+        addLegalLink(legal, "OpenStreetMap tile policy",
+                "https://operations.osmfoundation.org/policies/tiles/");
         addLegalLink(legal, "Flightradar24 Terms",
                 "https://www.flightradar24.com/terms-of-service");
         addLegalLink(legal, "ADS-B Exchange Terms",

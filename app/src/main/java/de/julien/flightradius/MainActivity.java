@@ -54,8 +54,9 @@ public class MainActivity extends Activity {
     private SwipePageHost pageHost;
     private View radarPage;
     private AircraftListPanel aircraftPanel;
+    private AircraftMapPanel mapPanel;
     private SettingsPanel settingsPanel;
-    private final ImageButton[] navigationButtons = new ImageButton[3];
+    private final ImageButton[] navigationButtons = new ImageButton[4];
     private int currentPage;
     private int restoredPage;
     private boolean pageAnimating;
@@ -121,7 +122,7 @@ public class MainActivity extends Activity {
         ImageButton settings = iconButton(R.drawable.ic_material_settings,
                 L10n.t(this, "settings"));
         settings.setContentDescription(L10n.t(this, "settings"));
-        settings.setOnClickListener(v -> switchPage(2));
+        settings.setOnClickListener(v -> switchPage(3));
         top.addView(settings, new LinearLayout.LayoutParams(dp(54), dp(54)));
         root.addView(top);
 
@@ -236,7 +237,7 @@ public class MainActivity extends Activity {
         pageHost.setListener(direction -> switchPage(currentPage + direction));
         shell.addView(pageHost, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        TextView footer = label("ADSB.LOL  •  FLIGHTRADAR24  •  ADS-B EXCHANGE",
+        TextView footer = label("ADSB.LOL  •  AIRPLANES.LIVE  •  ADS-B EXCHANGE",
                 9, muted, Typeface.NORMAL);
         footer.setGravity(Gravity.CENTER);
         footer.setLetterSpacing(0.06f);
@@ -248,14 +249,17 @@ public class MainActivity extends Activity {
         navigation.setPadding(dp(14), dp(4), dp(14), dp(6));
         navigationButtons[0] = navButton(R.drawable.ic_material_radar,
                 L10n.t(this, "live_radar"), 0);
-        navigationButtons[1] = navButton(R.drawable.ic_material_flight,
-                L10n.t(this, "aircraft"), 1);
-        navigationButtons[2] = navButton(R.drawable.ic_material_settings,
-                L10n.t(this, "settings"), 2);
+        navigationButtons[1] = navButton(getResources().getIdentifier(
+                        "ic_material_map", "drawable", getPackageName()),
+                L10n.t(this, "map"), 1);
+        navigationButtons[2] = navButton(R.drawable.ic_material_flight,
+                L10n.t(this, "aircraft"), 2);
+        navigationButtons[3] = navButton(R.drawable.ic_material_settings,
+                L10n.t(this, "settings"), 3);
         for (ImageButton button : navigationButtons) navigation.addView(button, navParams());
         shell.addView(navigation, new LinearLayout.LayoutParams(-1, dp(62)));
 
-        currentPage = Math.max(0, Math.min(2, restoredPage));
+        currentPage = Math.max(0, Math.min(3, restoredPage));
         pageHost.addView(pageFor(currentPage), new ViewGroup.LayoutParams(-1, -1));
         updateNavigation();
         setContentView(shell);
@@ -264,10 +268,14 @@ public class MainActivity extends Activity {
 
     private View pageFor(int page) {
         if (page == 1) {
+            if (mapPanel == null) mapPanel = new AircraftMapPanel(this);
+            return mapPanel;
+        }
+        if (page == 2) {
             if (aircraftPanel == null) aircraftPanel = new AircraftListPanel(this);
             return aircraftPanel;
         }
-        if (page == 2) {
+        if (page == 3) {
             if (settingsPanel == null) settingsPanel = new SettingsPanel(this, this::recreate);
             return settingsPanel;
         }
@@ -275,7 +283,7 @@ public class MainActivity extends Activity {
     }
 
     private void switchPage(int target) {
-        if (target < 0 || target > 2 || target == currentPage || pageAnimating) return;
+        if (target < 0 || target > 3 || target == currentPage || pageAnimating) return;
         final int from = currentPage;
         final int direction = target > from ? 1 : -1;
         final View previous = pageFor(from);
@@ -302,7 +310,8 @@ public class MainActivity extends Activity {
             setMotionBlur(previous, 0f);
             setMotionBlur(next, 0f);
             pageAnimating = false;
-            if (currentPage == 1 && aircraftPanel != null) aircraftPanel.refresh();
+            if (currentPage == 1 && mapPanel != null) mapPanel.refresh();
+            if (currentPage == 2 && aircraftPanel != null) aircraftPanel.refresh();
         }).start();
     }
 
@@ -338,11 +347,12 @@ public class MainActivity extends Activity {
 
     private void toggleMonitoring() {
         if (isRunning()) {
-            stopService(new Intent(this, MonitorService.class));
             preferences.edit()
                     .putBoolean(AppPreferences.KEY_RUNNING, false)
                     .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
                     .apply();
+            startService(new Intent(this, MonitorService.class)
+                    .setAction(MonitorService.ACTION_STOP));
             AppPreferences.clearLiveTelemetry(this);
             refreshLiveData();
         } else requestAndStart();
@@ -408,15 +418,6 @@ public class MainActivity extends Activity {
             switchPage(0);
             return;
         }
-        preferences.edit()
-                .putBoolean(AppPreferences.KEY_RUNNING, false)
-                .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
-                .putString(AppPreferences.KEY_CONNECTION, "standby")
-                .putString(AppPreferences.KEY_AIRCRAFT_HISTORY_JSON, "[]")
-                .apply();
-        stopService(new Intent(this, MonitorService.class));
-        AppPreferences.clearLiveTelemetry(this);
-        getSystemService(android.app.NotificationManager.class).cancelAll();
         super.onBackPressed();
     }
 
@@ -462,7 +463,8 @@ public class MainActivity extends Activity {
             nearestValue.setText(callsign + "  •  " + AppPreferences.distance(this, distance)
                     + "  •  " + AppPreferences.altitude(this, altitude));
         }
-        if (currentPage == 1 && aircraftPanel != null) aircraftPanel.refresh();
+        if (currentPage == 1 && mapPanel != null) mapPanel.refresh();
+        if (currentPage == 2 && aircraftPanel != null) aircraftPanel.refresh();
     }
 
     private void updateRadius(int km) { radiusValue.setText(AppPreferences.distance(this, km)); }

@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 final class MilitaryClassifier {
     private static final int DATABASE_MILITARY_FLAG = 1;
@@ -30,13 +31,17 @@ final class MilitaryClassifier {
             "T50", "PC21",
 
             // Purpose-built military rotorcraft and unmanned aircraft
-            "H64", "AH64", "H53", "CH53", "NH90", "TIGR", "A129", "AH1",
-            "KA50", "KA52", "MI24", "MI28", "RQ4", "MQ9", "Q4"
+            "H47", "H60", "H64", "AH64", "H53", "CH53", "NH90", "TIGR",
+            "A129", "AH1", "UH1", "KA50", "KA52", "MI24", "MI28",
+            "RQ4", "MQ9", "Q4"
     ));
 
     private static final Set<String> MILITARY_CALLSIGN_PREFIXES = new HashSet<>(
             Arrays.asList("RCH", "RRR", "CNV", "PAT", "EVAC", "FORTE", "NCHO",
-                    "GAF", "BAF", "FAF", "IAM", "ASY", "NOW", "AME", "CTM"));
+                    "GAF", "GAM", "GNY", "PCT", "BAF", "FAF", "IAM", "ASY",
+                    "NOW", "AME", "CTM"));
+    private static final Pattern GERMAN_MILITARY_REGISTRATION =
+            Pattern.compile("^[0-9]{2}\\+[0-9]{2}$");
 
     private MilitaryClassifier() { }
 
@@ -45,10 +50,16 @@ final class MilitaryClassifier {
         return isMilitary(
                 aircraft.optInt("dbFlags", 0),
                 aircraft.optString("t", ""),
-                aircraft.optString("flight", ""));
+                aircraft.optString("flight", ""),
+                aircraft.optString("r", ""));
     }
 
     static boolean isMilitary(int databaseFlags, String rawType, String rawCallsign) {
+        return isMilitary(databaseFlags, rawType, rawCallsign, "");
+    }
+
+    static boolean isMilitary(int databaseFlags, String rawType, String rawCallsign,
+                              String rawRegistration) {
         if ((databaseFlags & DATABASE_MILITARY_FLAG) != 0) return true;
 
         String type = normalize(rawType);
@@ -60,7 +71,8 @@ final class MilitaryClassifier {
                 return true;
             }
         }
-        return false;
+        String registration = normalize(rawRegistration).replace(" ", "");
+        return GERMAN_MILITARY_REGISTRATION.matcher(registration).matches();
     }
 
     private static String normalize(String value) {

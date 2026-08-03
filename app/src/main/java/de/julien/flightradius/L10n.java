@@ -39,6 +39,7 @@ final class L10n {
             case "battery": return v(c,"BATTERY OPTIMIZATION","电池优化","बैटरी अनुकूलन","OPTIMIZACIÓN DE BATERÍA","OPTIMISATION DE LA BATTERIE","تحسين البطارية","ব্যাটারি অপ্টিমাইজেশন","OTIMIZAÇÃO DE BATERIA","ОПТИМИЗАЦИЯ БАТАРЕИ","AKKUOPTIMIERUNG");
             case "not_available": return v(c,"Not available","不可用","उपलब्ध नहीं","No disponible","Non disponible","غير متاح","উপলভ্য নয়","Não disponível","Недоступно","Nicht verfügbar");
             case "aircraft": return v(c,"AIRCRAFT","飞机","विमान","AERONAVES","AÉRONEFS","الطائرات","বিমান","AERONAVES","САМОЛЁТЫ","FLUGZEUGE");
+            case "map": return v(c,"MAP","地图","मानचित्र","MAPA","CARTE","الخريطة","মানচিত্র","MAPA","КАРТА","KARTE");
             case "location_required": return v(c,"Location permission is required","需要位置权限","स्थान अनुमति आवश्यक है","Se requiere permiso de ubicación","L’autorisation de localisation est requise","يلزم إذن الموقع","লোকেশন অনুমতি প্রয়োজন","A permissão de localização é necessária","Требуется разрешение на геолокацию","Standortberechtigung wird benötigt");
             case "radar_active": return v(c,"● RADAR ACTIVE","● 雷达已启动","● रडार सक्रिय","● RADAR ACTIVO","● RADAR ACTIF","● الرادار نشط","● রাডার সক্রিয়","● RADAR ATIVO","● РАДАР АКТИВЕН","● RADAR AKTIV");
             case "radar_standby": return v(c,"○ RADAR ON STANDBY","○ 雷达待机","○ रडार स्टैंडबाय","○ RADAR EN ESPERA","○ RADAR EN VEILLE","○ الرادار في وضع الاستعداد","○ রাডার স্ট্যান্ডবাই","○ RADAR EM ESPERA","○ РАДАР В РЕЖИМЕ ОЖИДАНИЯ","○ RADAR IN BEREITSCHAFT");
