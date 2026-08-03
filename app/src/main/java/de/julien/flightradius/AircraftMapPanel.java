@@ -23,6 +23,9 @@ final class AircraftMapPanel extends FrameLayout {
     private boolean pendingRefresh;
     private boolean pageVisible;
     private boolean trafficPaused;
+    private String pendingFocusHex = "";
+    private double pendingFocusLatitude = Double.NaN;
+    private double pendingFocusLongitude = Double.NaN;
 
     AircraftMapPanel(Activity host) {
         super(host);
@@ -39,7 +42,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.8 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.9 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
@@ -55,6 +58,7 @@ final class AircraftMapPanel extends FrameLayout {
                 ready = true;
                 view.evaluateJavascript("window.marResize&&window.marResize()", null);
                 if (pendingRefresh) refresh();
+                applyPendingFocus();
             }
 
             @Override public boolean shouldOverrideUrlLoading(
@@ -109,6 +113,25 @@ final class AircraftMapPanel extends FrameLayout {
     void setPageVisible(boolean visible) {
         pageVisible = visible;
         MonitorService.setMapVisible(pageVisible && !trafficPaused);
+    }
+
+    void focusAircraft(String hex, double latitude, double longitude) {
+        pendingFocusHex = hex == null ? "" : hex;
+        pendingFocusLatitude = latitude;
+        pendingFocusLongitude = longitude;
+        applyPendingFocus();
+    }
+
+    private void applyPendingFocus() {
+        if (!ready || pendingFocusHex.isEmpty()) return;
+        String script = String.format(Locale.US, "window.marFocusAircraft(%s,%s,%s)",
+                JSONObject.quote(pendingFocusHex),
+                Double.isNaN(pendingFocusLatitude) ? "null"
+                        : Double.toString(pendingFocusLatitude),
+                Double.isNaN(pendingFocusLongitude) ? "null"
+                        : Double.toString(pendingFocusLongitude));
+        webView.evaluateJavascript(script, null);
+        pendingFocusHex = "";
     }
 
     private final class MapBridge {

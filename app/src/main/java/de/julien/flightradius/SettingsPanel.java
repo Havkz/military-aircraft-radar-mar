@@ -21,6 +21,8 @@ import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 
+import java.util.List;
+
 final class SettingsPanel extends ScrollView {
     private final Activity host;
     private final SharedPreferences prefs;
@@ -72,10 +74,7 @@ final class SettingsPanel extends ScrollView {
                 new String[]{L10n.t(host, "aviation_units"), L10n.t(host, "metric_units")}, true);
 
         section(root, L10n.t(host, "live_section"));
-        addDropdown(root, L10n.t(host, "tracker_tap"), AppPreferences.KEY_TRACKER,
-                new String[]{"flightradar", "adsbexchange"},
-                new String[]{"Flightradar24", "ADS-B Exchange"}, false);
-        addTrackerHint(root);
+        addCustomAlerts(root);
         addAdsbExchangeKey(root);
         addAirplanesRate(root);
         addSwitch(root, L10n.t(host, "vibration"));
@@ -200,6 +199,171 @@ final class SettingsPanel extends ScrollView {
                     .show();
         });
         root.addView(row, cardParams());
+    }
+
+    private void addCustomAlerts(LinearLayout root) {
+        LinearLayout row = settingRow(MapL10n.t(host, "custom_alerts"));
+        TextView value = (TextView) row.getChildAt(1);
+        Runnable refresh = () -> {
+            List<CustomAlertRules.Rule> rules = CustomAlertRules.load(host);
+            int enabled = 0;
+            for (CustomAlertRules.Rule rule : rules) if (rule.enabled) enabled++;
+            value.setText(enabled + " / " + rules.size() + "  ›");
+        };
+        refresh.run();
+        row.setOnClickListener(view -> showAlertRules(refresh));
+        root.addView(row, cardParams());
+    }
+
+    private void showAlertRules(Runnable refresh) {
+        List<CustomAlertRules.Rule> rules = CustomAlertRules.load(host);
+        String[] entries = new String[rules.size() + 1];
+        entries[0] = "+  " + MapL10n.t(host, "add_rule");
+        for (int i = 0; i < rules.size(); i++) {
+            CustomAlertRules.Rule rule = rules.get(i);
+            entries[i + 1] = (rule.enabled ? "●  " : "○  ")
+                    + CustomAlertRules.description(rule);
+        }
+        new AlertDialog.Builder(host)
+                .setTitle(MapL10n.t(host, "custom_alerts"))
+                .setItems(entries, (dialog, which) -> {
+                    if (which == 0) chooseNewAlertType(refresh);
+                    else showRuleActions(rules, which - 1, refresh);
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void chooseNewAlertType(Runnable refresh) {
+        String[] labels = {
+                "Squawk 7700", "Squawk 7600", "Squawk 7500",
+                MapL10n.t(host, "custom_squawk"),
+                MapL10n.t(host, "low_level"),
+                MapL10n.t(host, "altitude_below"),
+                MapL10n.t(host, "speed_below"),
+                MapL10n.t(host, "speed_above")};
+        new AlertDialog.Builder(host)
+                .setTitle(MapL10n.t(host, "rule_type"))
+                .setItems(labels, (dialog, which) -> {
+                    CustomAlertRules.Rule rule = new CustomAlertRules.Rule();
+                    if (which <= 3) {
+                        rule.type = CustomAlertRules.SQUAWK;
+                        rule.squawk = which == 0 ? "7700" : which == 1 ? "7600"
+                                : which == 2 ? "7500" : "";
+                    } else {
+                        String[] types = {CustomAlertRules.LOW_LEVEL,
+                                CustomAlertRules.ALTITUDE_BELOW,
+                                CustomAlertRules.SPEED_BELOW,
+                                CustomAlertRules.SPEED_ABOVE};
+                        rule.type = types[which - 4];
+                        rule.durationSeconds = CustomAlertRules.LOW_LEVEL.equals(rule.type)
+                                ? 120 : 0;
+                    }
+                    editAlertRule(rule, -1, refresh);
+                }).show();
+    }
+
+    private void showRuleActions(List<CustomAlertRules.Rule> rules, int index,
+                                 Runnable refresh) {
+        CustomAlertRules.Rule rule = rules.get(index);
+        String[] actions = {rule.enabled ? MapL10n.t(host, "disable")
+                : MapL10n.t(host, "enable"), MapL10n.t(host, "edit"),
+                MapL10n.t(host, "delete")};
+        new AlertDialog.Builder(host)
+                .setTitle(CustomAlertRules.description(rule))
+                .setItems(actions, (dialog, which) -> {
+                    if (which == 0) {
+                        rule.enabled = !rule.enabled;
+                        saveAlertRules(rules, refresh);
+                    } else if (which == 1) editAlertRule(rule, index, refresh);
+                    else {
+                        rules.remove(index);
+                        saveAlertRules(rules, refresh);
+                    }
+                }).show();
+    }
+
+    private void editAlertRule(CustomAlertRules.Rule rule, int index, Runnable refresh) {
+        LinearLayout form = new LinearLayout(host);
+        form.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(20);
+        form.setPadding(pad, dp(4), pad, 0);
+        EditText name = ruleField(form, MapL10n.t(host, "rule_name"), rule.name, false);
+        EditText primary;
+        EditText vertical = null;
+        if (CustomAlertRules.SQUAWK.equals(rule.type)) {
+            primary = ruleField(form, MapL10n.t(host, "squawk_code"), rule.squawk, false);
+        } else {
+            String label = CustomAlertRules.SPEED_BELOW.equals(rule.type)
+                    || CustomAlertRules.SPEED_ABOVE.equals(rule.type)
+                    ? MapL10n.t(host, "speed_knots")
+                    : MapL10n.t(host, "altitude_feet");
+            primary = ruleField(form, label, String.valueOf(Math.round(rule.threshold)), true);
+            if (CustomAlertRules.LOW_LEVEL.equals(rule.type)) {
+                vertical = ruleField(form, MapL10n.t(host, "max_vertical_rate"),
+                        String.valueOf(Math.round(rule.verticalRate)), true);
+            }
+        }
+        EditText duration = ruleField(form, MapL10n.t(host, "duration_seconds"),
+                String.valueOf(rule.durationSeconds), true);
+        final EditText verticalField = vertical;
+        AlertDialog alert = new AlertDialog.Builder(host)
+                .setTitle(MapL10n.t(host, "edit_rule"))
+                .setView(form)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(MapL10n.t(host, "save"), null)
+                .create();
+        alert.setOnShowListener(ignored -> alert.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(button -> {
+                    try {
+                        rule.name = name.getText().toString().trim();
+                        if (CustomAlertRules.SQUAWK.equals(rule.type)) {
+                            rule.squawk = primary.getText().toString().trim();
+                            if (!CustomAlertRules.validSquawk(rule.squawk)) throw new Exception();
+                        } else {
+                            rule.threshold = Double.parseDouble(primary.getText().toString());
+                            if (rule.threshold < 0) throw new Exception();
+                            if (verticalField != null) {
+                                rule.verticalRate = Double.parseDouble(
+                                        verticalField.getText().toString());
+                                if (rule.verticalRate < 0) throw new Exception();
+                            }
+                        }
+                        rule.durationSeconds = Math.max(0,
+                                Integer.parseInt(duration.getText().toString()));
+                        List<CustomAlertRules.Rule> rules = CustomAlertRules.load(host);
+                        if (index < 0) rules.add(rule);
+                        else if (index < rules.size()) rules.set(index, rule);
+                        saveAlertRules(rules, refresh);
+                        alert.dismiss();
+                    } catch (Exception error) {
+                        android.widget.Toast.makeText(host,
+                                MapL10n.t(host, "invalid_rule"),
+                                android.widget.Toast.LENGTH_LONG).show();
+                    }
+                }));
+        alert.show();
+    }
+
+    private EditText ruleField(LinearLayout form, String hint, String value,
+                               boolean number) {
+        EditText input = new EditText(host);
+        input.setHint(hint);
+        input.setText(value);
+        input.setSingleLine(true);
+        input.setInputType(number ? InputType.TYPE_CLASS_NUMBER
+                | InputType.TYPE_NUMBER_FLAG_DECIMAL : InputType.TYPE_CLASS_TEXT);
+        form.addView(input, new LinearLayout.LayoutParams(-1, -2));
+        return input;
+    }
+
+    private void saveAlertRules(List<CustomAlertRules.Rule> rules, Runnable refresh) {
+        CustomAlertRules.save(host, rules);
+        refresh.run();
+        if (prefs.getBoolean(AppPreferences.KEY_RUNNING, false)) {
+            host.startService(new Intent(host, MonitorService.class)
+                    .setAction(MonitorService.ACTION_SOURCES_CHANGED));
+        }
     }
 
     private void setAirplanesBusinessRate(boolean enabled) {
@@ -424,14 +588,6 @@ final class SettingsPanel extends ScrollView {
         root.addView(heading);
     }
 
-    private void addTrackerHint(LinearLayout root) {
-        TextView hint = label("ⓘ  " + L10n.t(host, "adsb_recommended"),
-                11, MARColors.BLUE, Typeface.NORMAL);
-        hint.setLineSpacing(0, 1.2f);
-        hint.setPadding(dp(8), 0, dp(8), dp(12));
-        root.addView(hint);
-    }
-
     private void addLegal(LinearLayout root) {
         section(root, L10n.t(host, "legal"));
         LinearLayout legal = card();
@@ -459,8 +615,6 @@ final class SettingsPanel extends ScrollView {
                 "https://www.planespotters.net/");
         addLegalLink(legal, "Planespotting.be",
                 "https://www.planespotting.be/");
-        addLegalLink(legal, "Flightradar24 Terms",
-                "https://www.flightradar24.com/terms-of-service");
         addLegalLink(legal, "ADS-B Exchange Terms",
                 "https://www.jetnet.com/legal/terms-of-use");
         root.addView(legal, cardParams());

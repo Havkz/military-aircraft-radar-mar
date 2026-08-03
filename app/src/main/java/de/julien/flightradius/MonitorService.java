@@ -81,6 +81,7 @@ public class MonitorService extends Service implements LocationListener {
     private final Map<String, JSONObject> sessionHistory = new LinkedHashMap<>();
     private final Map<String, Double> geoidOffsetFeet = new HashMap<>();
     private final Map<String, Long> notificationSuppressedUntil = new ConcurrentHashMap<>();
+    private final Map<String, Long> customConditionSince = new ConcurrentHashMap<>();
     private final Set<Integer> aircraftNotificationIds = Collections.newSetFromMap(
             new ConcurrentHashMap<Integer, Boolean>());
     private HandlerThread workerThread;
@@ -163,6 +164,21 @@ public class MonitorService extends Service implements LocationListener {
         }
         networkPool = Executors.newFixedThreadPool(4);
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        long storedLatitude = AppPreferences.get(this).getLong(
+                AppPreferences.KEY_OWN_LATITUDE, Double.doubleToRawLongBits(Double.NaN));
+        long storedLongitude = AppPreferences.get(this).getLong(
+                AppPreferences.KEY_OWN_LONGITUDE, Double.doubleToRawLongBits(Double.NaN));
+        double latitude = Double.longBitsToDouble(storedLatitude);
+        double longitude = Double.longBitsToDouble(storedLongitude);
+        if (!Double.isNaN(latitude) && !Double.isNaN(longitude)) {
+            Location stored = new Location("stored");
+            stored.setLatitude(latitude);
+            stored.setLongitude(longitude);
+            stored.setTime(System.currentTimeMillis());
+            latestLocation = stored;
+            latestOwnLatitude = latitude;
+            latestOwnLongitude = longitude;
+        }
         loadSessionHistory();
         if (hasLocationPermission()) {
             registerProvider(LocationManager.GPS_PROVIDER);
@@ -385,6 +401,7 @@ public class MonitorService extends Service implements LocationListener {
             Set<String> currentlyInside = new HashSet<>();
             long scanTime = System.currentTimeMillis();
             int alertTargetCount = 0;
+            List<CustomAlertRules.Rule> customRules = CustomAlertRules.load(this);
             String nearestCallsign = "";
             double nearestDistanceKm = Double.NaN;
             double nearestAltitudeFt = Double.NaN;
@@ -411,7 +428,6 @@ public class MonitorService extends Service implements LocationListener {
                                     mapPosition[0], mapPosition[1]));
                         }
                     }
-                    if (!isAlertTarget(plane)) continue;
                     // Airplanes.live's free-plan interval is 180 seconds. Keep its last
                     // provider position until the next permitted cross-check instead of
                     // flapping a source-only contact in and out every minute.
@@ -428,10 +444,18 @@ public class MonitorService extends Service implements LocationListener {
                     String callsign = plane.optString("flight", "").trim();
                     double altitudeFt = altitudeFeet(
                             plane.opt("alt_geom"), plane.opt("alt_baro"));
+                    String customReason = CustomAlertRules.evaluate(customRules, plane, hex,
+                            altitudeFt, scanTime, customConditionSince);
+                    boolean builtInTarget = isAlertTarget(plane);
+                    if (!builtInTarget && customReason.isEmpty()) continue;
                     alertTargetCount++;
                     currentlyInside.add(hex);
                     JSONObject compact = compactAircraft(plane, hex, callsign,
                             distanceKm, altitudeFt, aircraftLat, aircraftLon);
+                    if (!customReason.isEmpty()) compact.put("alert_reason", customReason);
+                    else if (AircraftData.isRotorcraft(plane)) {
+                        compact.put("alert_reason", MapL10n.t(this, "rotorcraft"));
+                    } else compact.put("alert_reason", MapL10n.t(this, "military"));
                     liveAircraft.put(compact);
                     updateSessionRecord(compact, scanTime);
                     String displayName = AircraftData.displayName(plane);
@@ -614,8 +638,10 @@ public class MonitorService extends Service implements LocationListener {
         double aircraftLat = aircraft.optDouble("lat", Double.NaN);
         double aircraftLon = aircraft.optDouble("lon", Double.NaN);
         CharSequence details;
+        String alertReason = aircraft.optString("alert_reason", "");
         if (inRange) {
-            details = AppPreferences.distance(this, distanceKm) + "  •  "
+            details = (alertReason.isEmpty() ? "" : alertReason + "  •  ")
+                    + AppPreferences.distance(this, distanceKm) + "  •  "
                     + AppPreferences.altitude(this, altitudeFt);
         } else {
             String state = L10n.t(this, "out_of_range");
@@ -625,8 +651,10 @@ public class MonitorService extends Service implements LocationListener {
                     0, state.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             details = redState;
         }
-        Intent trackerIntent = new Intent(this, TrackerDispatchActivity.class)
+        Intent trackerIntent = new Intent(this, MainActivity.class)
                 .setData(android.net.Uri.parse("mar://aircraft/" + android.net.Uri.encode(hex)))
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra("open_map", true)
                 .putExtra("callsign", callsign)
                 .putExtra("hex", hex)
                 .putExtra("lat", aircraftLat)
@@ -645,7 +673,7 @@ public class MonitorService extends Service implements LocationListener {
                 .setContentTitle(displayName)
                 .setContentText(details)
                 .setStyle(new Notification.BigTextStyle().bigText(details))
-                .setSubText(displayName)
+                .setSubText(alertReason.isEmpty() ? displayName : alertReason)
                 .setColor(inRange ? MARColors.ORANGE : MARColors.RED)
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setContentIntent(tracker)
@@ -754,6 +782,8 @@ public class MonitorService extends Service implements LocationListener {
         item.put("seen_position", plane.optDouble("seen_pos",
                 plane.optDouble("seen", 0)));
         item.put("emergency", plane.optString("emergency", "none"));
+        item.put("alert", plane.has("alert") ? plane.optInt("alert", 0) : JSONObject.NULL);
+        item.put("spi", plane.has("spi") ? plane.optInt("spi", 0) : JSONObject.NULL);
         return item;
     }
 

@@ -61,6 +61,10 @@ public class MainActivity extends Activity {
     private int restoredPage;
     private boolean pageAnimating;
     private boolean activityResumed;
+    private boolean mapWasVisible;
+    private String pendingAircraftHex = "";
+    private double pendingAircraftLatitude = Double.NaN;
+    private double pendingAircraftLongitude = Double.NaN;
     private int background;
     private int surface;
     private int text;
@@ -81,7 +85,9 @@ public class MainActivity extends Activity {
         L10n.applyDirection(this);
         applyPalette();
         settingsSignature = signature();
-        restoredPage = savedInstanceState == null ? 0 : savedInstanceState.getInt("page", 0);
+        readAircraftIntent(getIntent());
+        restoredPage = !pendingAircraftHex.isEmpty() ? 1
+                : (savedInstanceState == null ? 0 : savedInstanceState.getInt("page", 0));
         buildUi();
     }
 
@@ -270,6 +276,7 @@ public class MainActivity extends Activity {
     private View pageFor(int page) {
         if (page == 1) {
             if (mapPanel == null) mapPanel = new AircraftMapPanel(this);
+            focusPendingAircraft();
             return mapPanel;
         }
         if (page == 2) {
@@ -281,6 +288,30 @@ public class MainActivity extends Activity {
             return settingsPanel;
         }
         return radarPage;
+    }
+
+    private void readAircraftIntent(Intent intent) {
+        if (intent == null || !intent.getBooleanExtra("open_map", false)) return;
+        pendingAircraftHex = intent.getStringExtra("hex");
+        if (pendingAircraftHex == null) pendingAircraftHex = "";
+        pendingAircraftLatitude = intent.getDoubleExtra("lat", Double.NaN);
+        pendingAircraftLongitude = intent.getDoubleExtra("lon", Double.NaN);
+    }
+
+    private void focusPendingAircraft() {
+        if (mapPanel == null || pendingAircraftHex.isEmpty()) return;
+        mapPanel.focusAircraft(pendingAircraftHex,
+                pendingAircraftLatitude, pendingAircraftLongitude);
+        pendingAircraftHex = "";
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        readAircraftIntent(intent);
+        if (pendingAircraftHex.isEmpty()) return;
+        if (currentPage != 1) switchPage(1);
+        else focusPendingAircraft();
     }
 
     private void switchPage(int target) {
@@ -430,7 +461,11 @@ public class MainActivity extends Activity {
             // alert service. Starting it here also recovers after Android stops the service
             // during an APK update.
             requestAndStart();
+        } else if (mapVisible && !mapWasVisible) {
+            startService(new Intent(this, MonitorService.class)
+                    .setAction(MonitorService.ACTION_RADIUS_CHANGED));
         }
+        mapWasVisible = mapVisible;
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {

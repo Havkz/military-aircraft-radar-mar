@@ -14,6 +14,8 @@ final class AppPreferences {
     static final String KEY_UNITS = "units";
     static final String KEY_REFRESH_SECONDS = "refresh_seconds";
     static final String KEY_VIBRATION = "vibration";
+    static final String KEY_ALERT_RULES = "custom_alert_rules";
+    // Kept only for migrating the legacy detail screen; no longer exposed in settings.
     static final String KEY_TRACKER = "tracker";
     static final String KEY_RUNNING = "service_running";
     static final String KEY_MONITORING_ENABLED = "monitoring_enabled";
