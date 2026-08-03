@@ -397,7 +397,13 @@ public class MonitorService extends Service implements LocationListener {
                         double mapDistance = DistanceCalculator.kilometers(
                                 own.getLatitude(), own.getLongitude(),
                                 mapPosition[0], mapPosition[1]);
-                        if (!Double.isNaN(mapDistance) && mapDistance <= mapRadiusKm) {
+                        // The regional providers are limited to 250 NM, but ADSB.lol's /mil
+                        // response is global. Preserve those real global military contacts when
+                        // the map is open so zooming out does not discard data already received.
+                        boolean globalMilitaryOnMap = expandedMap
+                                && MilitaryClassifier.isMilitary(plane);
+                        if (!Double.isNaN(mapDistance)
+                                && (mapDistance <= mapRadiusKm || globalMilitaryOnMap)) {
                             allAircraft.put(compactAircraft(plane,
                                     plane.optString("hex", "unknown").replace("~", ""),
                                     plane.optString("flight", "").trim(), mapDistance,

@@ -36,7 +36,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.4 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.5 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
             if (event.getPointerCount() > 1 || action == MotionEvent.ACTION_POINTER_DOWN) {
