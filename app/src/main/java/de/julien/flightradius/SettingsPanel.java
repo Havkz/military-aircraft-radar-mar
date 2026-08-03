@@ -221,11 +221,11 @@ final class SettingsPanel extends ScrollView {
 
         section(root, MapL10n.t(host, "map_appearance"));
         addMapSwitch(root, MapL10n.t(host, "dark_map"),
-                MapPreferences.DARK, true);
+                MapPreferences.DARK, false);
         addMapSwitch(root, MapL10n.t(host, "darker_colors"),
                 MapPreferences.DARKER, false);
         addMapSwitch(root, MapL10n.t(host, "dim_map"),
-                MapPreferences.DIM, true);
+                MapPreferences.DIM, false);
         addMapSwitch(root, MapL10n.t(host, "colored_aircraft"),
                 MapPreferences.COLORED_PLANES, true);
         addMapSwitch(root, MapL10n.t(host, "colored_tracks"),

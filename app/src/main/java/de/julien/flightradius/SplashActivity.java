@@ -77,15 +77,21 @@ public class SplashActivity extends Activity {
             return;
         }
         android.content.SharedPreferences prefs = AppPreferences.get(this);
-        if (prefs.getInt(AppPreferences.KEY_APP_VERSION, 0) == currentVersion) return;
+        int previousVersion = prefs.getInt(AppPreferences.KEY_APP_VERSION, 0);
+        if (previousVersion == currentVersion) return;
         getSystemService(NotificationManager.class).cancelAll();
         stopService(new Intent(this, MonitorService.class));
-        prefs.edit()
+        android.content.SharedPreferences.Editor editor = prefs.edit()
                 .putInt(AppPreferences.KEY_APP_VERSION, currentVersion)
                 .putBoolean(AppPreferences.KEY_RUNNING, false)
                 .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, false)
-                .putString(AppPreferences.KEY_CONNECTION, "standby")
-                .apply();
+                .putString(AppPreferences.KEY_CONNECTION, "standby");
+        if (previousVersion > 0 && previousVersion < 35) {
+            editor.remove(MapPreferences.DARK)
+                    .remove(MapPreferences.DARKER)
+                    .remove(MapPreferences.DIM);
+        }
+        editor.apply();
         AppPreferences.clearLiveTelemetry(this);
     }
 

@@ -12,6 +12,7 @@ final class SwipePageHost extends FrameLayout {
     private float downX;
     private float downY;
     private boolean horizontal;
+    private boolean multiTouch;
     private Listener listener;
 
     SwipePageHost(Context context) {
@@ -28,14 +29,29 @@ final class SwipePageHost extends FrameLayout {
                 downX = event.getX();
                 downY = event.getY();
                 horizontal = false;
+                multiTouch = false;
                 break;
+            case MotionEvent.ACTION_POINTER_DOWN:
+                multiTouch = true;
+                horizontal = false;
+                return false;
             case MotionEvent.ACTION_MOVE:
+                if (multiTouch || event.getPointerCount() > 1) {
+                    multiTouch = true;
+                    horizontal = false;
+                    return false;
+                }
                 float dx = event.getX() - downX;
                 float dy = event.getY() - downY;
                 if (Math.abs(dx) > threshold / 3f && Math.abs(dx) > Math.abs(dy) * 1.35f) {
                     horizontal = true;
                     return true;
                 }
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                multiTouch = false;
+                horizontal = false;
                 break;
             default:
                 break;
@@ -44,6 +60,13 @@ final class SwipePageHost extends FrameLayout {
     }
 
     @Override public boolean onTouchEvent(MotionEvent event) {
+        if (multiTouch || event.getPointerCount() > 1) {
+            if (event.getActionMasked() == MotionEvent.ACTION_UP
+                    || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                multiTouch = false;
+            }
+            return false;
+        }
         if (!horizontal) return true;
         if (event.getActionMasked() == MotionEvent.ACTION_UP) {
             float dx = event.getX() - downX;

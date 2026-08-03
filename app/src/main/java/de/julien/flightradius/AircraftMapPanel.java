@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
+import android.view.MotionEvent;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -35,10 +36,20 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.2 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.3 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+        webView.setOnTouchListener((view, event) -> {
+            int action = event.getActionMasked();
+            if (event.getPointerCount() > 1 || action == MotionEvent.ACTION_POINTER_DOWN) {
+                view.getParent().requestDisallowInterceptTouchEvent(true);
+            } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                view.getParent().requestDisallowInterceptTouchEvent(false);
+            }
+            return false;
+        });
         webView.setWebViewClient(new WebViewClient() {
             @Override public void onPageFinished(WebView view, String url) {
                 ready = true;
+                view.evaluateJavascript("window.marResize&&window.marResize()", null);
                 if (pendingRefresh) refresh();
             }
 
@@ -55,6 +66,14 @@ final class AircraftMapPanel extends FrameLayout {
         });
         addView(webView, new LayoutParams(-1, -1));
         webView.loadUrl("file:///android_asset/aircraft_map.html");
+    }
+
+    @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight);
+        if (ready && width > 0 && height > 0) {
+            webView.post(() -> webView.evaluateJavascript(
+                    "window.marResize&&window.marResize()", null));
+        }
     }
 
     void refresh() {
@@ -78,7 +97,7 @@ final class AircraftMapPanel extends FrameLayout {
                 Double.isNaN(latitude) ? "null" : Double.toString(latitude),
                 Double.isNaN(longitude) ? "null" : Double.toString(longitude),
                 radius, MapPreferences.json(host).toString());
-        webView.evaluateJavascript(script, null);
+        webView.evaluateJavascript("window.marResize&&window.marResize();" + script, null);
     }
 
     void destroy() {

@@ -61,9 +61,9 @@ final class MapPreferences {
         try {
             result.put("textScale", preferences.getFloat(TEXT_SCALE, 1f));
             result.put("iconScale", preferences.getFloat(ICON_SCALE, 1f));
-            result.put("dark", preferences.getBoolean(DARK, true));
+            result.put("dark", preferences.getBoolean(DARK, false));
             result.put("darker", preferences.getBoolean(DARKER, false));
-            result.put("dim", preferences.getBoolean(DIM, true));
+            result.put("dim", preferences.getBoolean(DIM, false));
             result.put("coloredPlanes", preferences.getBoolean(COLORED_PLANES, true));
             result.put("coloredTrails", preferences.getBoolean(COLORED_TRAILS, true));
             result.put("hardwareTracks", preferences.getBoolean(HARDWARE_TRACKS, true));
