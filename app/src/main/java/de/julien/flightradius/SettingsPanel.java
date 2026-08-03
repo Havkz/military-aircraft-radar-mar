@@ -202,14 +202,18 @@ final class SettingsPanel extends ScrollView {
                 MapPreferences.LABEL_UNITS, true);
         addMapSwitch(root, MapL10n.t(host, "smaller_labels"),
                 MapPreferences.SMALL_LABELS, true);
+        addMapSwitch(root, MapL10n.t(host, "smaller_wind_labels"),
+                MapPreferences.SMALL_WIND_LABELS, true);
         addMapSwitch(root, MapL10n.t(host, "geometric_alt"),
                 MapPreferences.GEOMETRIC_ALTITUDE, false);
         addMapSwitch(root, MapL10n.t(host, "egm_conversion"),
                 MapPreferences.EGM_CONVERSION, false);
         addMapSwitch(root, MapL10n.t(host, "qnh_correct"),
                 MapPreferences.QNH_CORRECTION, false);
-        addMapSwitch(root, MapL10n.t(host, "track_utc"),
-                MapPreferences.TRACK_UTC, true);
+        addMapSwitch(root, MapL10n.t(host, "live_track_utc"),
+                MapPreferences.LIVE_TRACK_UTC, false);
+        addMapSwitch(root, MapL10n.t(host, "historic_track_utc"),
+                MapPreferences.HISTORIC_TRACK_UTC, true);
 
         section(root, MapL10n.t(host, "tracks_history"));
         addMapSwitch(root, MapL10n.t(host, "last_leg"),
@@ -224,6 +228,8 @@ final class SettingsPanel extends ScrollView {
                 MapPreferences.INFOBLOCK, true);
         addMapSwitch(root, MapL10n.t(host, "wide_info"),
                 MapPreferences.WIDE_INFOBLOCK, false);
+        addMapSwitch(root, MapL10n.t(host, "hover_info"),
+                MapPreferences.HOVER_INFOBLOCK, false);
         addMapSwitch(root, MapL10n.t(host, "auto_select"),
                 MapPreferences.AUTO_SELECT, false);
         addMapSwitch(root, MapL10n.t(host, "pictures_planespotters"),
@@ -238,6 +244,8 @@ final class SettingsPanel extends ScrollView {
                 MapPreferences.NON_ICAO, true);
         addMapSwitch(root, MapL10n.t(host, "update_gps"),
                 MapPreferences.UPDATE_GPS, true);
+        addMapSwitch(root, MapL10n.t(host, "include_filters_url"),
+                MapPreferences.INCLUDE_FILTERS_URL, false);
 
         section(root, MapL10n.t(host, "advanced"));
         addMapSwitch(root, MapL10n.t(host, "debug_tracks"),
@@ -411,6 +419,8 @@ final class SettingsPanel extends ScrollView {
                 "https://www.adsb.lol/docs/open-data/api/");
         addLegalLink(legal, "Airplanes.live API",
                 "https://airplanes.live/api-guide/");
+        addLegalLink(legal, "Airplanes.live Terms of Use",
+                "https://airplanes.live/terms-of-use/");
         addLegalLink(legal, "OpenStreetMap tile policy",
                 "https://operations.osmfoundation.org/policies/tiles/");
         addLegalLink(legal, "Leaflet BSD 2-Clause License",

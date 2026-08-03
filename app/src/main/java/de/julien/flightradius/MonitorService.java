@@ -65,11 +65,16 @@ public class MonitorService extends Service implements LocationListener {
     private static final long AIRPLANES_REFRESH_MS = 180_000L;
     private static final long ADSBX_REFRESH_MS = 30_000L;
     private static final double MAP_MAX_POSITION_AGE_SECONDS = 210d;
+    private static final int EXPANDED_MAP_RADIUS_NM = 250;
+    private static final double NAUTICAL_MILE_KM = 1.852d;
+    private static final long WAKE_LOCK_TIMEOUT_MS = 10 * 60_000L;
+    private static final long WAKE_LOCK_RENEW_MS = 9 * 60_000L;
     private static final int STATUS_NOTIFICATION_ID = 1001;
     private static final String MILITARY_ENDPOINT = "https://api.adsb.lol/v2/mil";
     private static volatile String latestAllAircraftJson = "[]";
     private static volatile double latestOwnLatitude = Double.NaN;
     private static volatile double latestOwnLongitude = Double.NaN;
+    private static volatile boolean mapVisible;
 
     private final Map<String, JSONObject> lastKnownAlerts = new HashMap<>();
     private final Map<String, JSONObject> sessionHistory = new LinkedHashMap<>();
@@ -81,6 +86,7 @@ public class MonitorService extends Service implements LocationListener {
     private Handler worker;
     private ExecutorService networkPool;
     private LocationManager locationManager;
+    private PowerManager.WakeLock monitorWakeLock;
     private volatile Location latestLocation;
     private static volatile boolean running;
     private boolean pollingScheduled;
@@ -93,32 +99,38 @@ public class MonitorService extends Service implements LocationListener {
     private long lastAdsbLolRegionalFetchMs;
     private long lastAirplanesFetchMs;
     private long lastAdsbExchangeFetchMs;
-    private long adsbLolBackoffMs;
-    private long adsbLolBackoffUntilMs;
-    private long airplanesBackoffMs;
-    private long airplanesBackoffUntilMs;
+    private final AdaptiveBackoff adsbLolBackoff = new AdaptiveBackoff();
+    private final AdaptiveBackoff airplanesBackoff = new AdaptiveBackoff();
 
     static boolean isRunning() { return running; }
     static String latestAllAircraftJson() { return latestAllAircraftJson; }
     static double latestOwnLatitude() { return latestOwnLatitude; }
     static double latestOwnLongitude() { return latestOwnLongitude; }
+    static void setMapVisible(boolean visible) { mapVisible = visible; }
+
+    static int requestRadiusNm(int alertRadiusKm, boolean expandedMap) {
+        if (expandedMap) return EXPANDED_MAP_RADIUS_NM;
+        return Math.max(1, Math.min(EXPANDED_MAP_RADIUS_NM,
+                (int) Math.ceil(alertRadiusKm / NAUTICAL_MILE_KM)));
+    }
 
     private final Runnable pollTask = new Runnable() {
         @Override public void run() {
-            PowerManager.WakeLock wakeLock = null;
             try {
-                PowerManager power = getSystemService(PowerManager.class);
-                if (power != null) {
-                    wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
-                            "MAR:live-poll");
-                    wakeLock.acquire(45_000L);
-                }
                 pollAircraft();
             }
             finally {
-                if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
                 if (worker != null) worker.postDelayed(this, nextAdsbLolDelayMs());
             }
+        }
+    };
+
+    private final Runnable renewWakeLockTask = new Runnable() {
+        @Override public void run() {
+            if (monitorWakeLock == null || worker == null) return;
+            if (monitorWakeLock.isHeld()) monitorWakeLock.release();
+            monitorWakeLock.acquire(WAKE_LOCK_TIMEOUT_MS);
+            worker.postDelayed(this, WAKE_LOCK_RENEW_MS);
         }
     };
 
@@ -129,10 +141,20 @@ public class MonitorService extends Service implements LocationListener {
         startForeground(STATUS_NOTIFICATION_ID,
                 statusNotification("INITIALIZING",
                         L10n.t(this, "waiting_location"), 0));
+        PowerManager power = getSystemService(PowerManager.class);
+        if (power != null) {
+            monitorWakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
+                    "MAR:active-monitoring");
+            monitorWakeLock.setReferenceCounted(false);
+            monitorWakeLock.acquire(WAKE_LOCK_TIMEOUT_MS);
+        }
 
         workerThread = new HandlerThread("military-live-monitor");
         workerThread.start();
         worker = new Handler(workerThread.getLooper());
+        if (monitorWakeLock != null) {
+            worker.postDelayed(renewWakeLockTask, WAKE_LOCK_RENEW_MS);
+        }
         networkPool = Executors.newFixedThreadPool(4);
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         loadSessionHistory();
@@ -209,6 +231,9 @@ public class MonitorService extends Service implements LocationListener {
         if (worker != null) worker.removeCallbacksAndMessages(null);
         if (workerThread != null) workerThread.quitSafely();
         if (networkPool != null) networkPool.shutdownNow();
+        if (monitorWakeLock != null && monitorWakeLock.isHeld()) {
+            monitorWakeLock.release();
+        }
         NotificationManager notificationManager = getSystemService(NotificationManager.class);
         if (!shouldRestart) {
             for (Integer notificationId : aircraftNotificationIds) {
@@ -268,7 +293,10 @@ public class MonitorService extends Service implements LocationListener {
             return;
         }
 
-        int radiusNm = Math.max(1, Math.min(250, (int) Math.ceil(radiusKm / 1.852)));
+        boolean expandedMap = mapVisible;
+        int radiusNm = requestRadiusNm(radiusKm, expandedMap);
+        double mapRadiusKm = expandedMap
+                ? EXPANDED_MAP_RADIUS_NM * NAUTICAL_MILE_KM : radiusKm;
         String localEndpoint = String.format(Locale.US,
                 "https://api.adsb.lol/v2/lat/%.5f/lon/%.5f/dist/%d",
                 own.getLatitude(), own.getLongitude(), radiusNm);
@@ -350,7 +378,7 @@ public class MonitorService extends Service implements LocationListener {
             JSONArray allAircraft = new JSONArray();
             Set<String> currentlyInside = new HashSet<>();
             long scanTime = System.currentTimeMillis();
-            int militaryCount = 0;
+            int alertTargetCount = 0;
             String nearestCallsign = "";
             double nearestDistanceKm = Double.NaN;
             double nearestAltitudeFt = Double.NaN;
@@ -363,7 +391,7 @@ public class MonitorService extends Service implements LocationListener {
                         double mapDistance = DistanceCalculator.kilometers(
                                 own.getLatitude(), own.getLongitude(),
                                 mapPosition[0], mapPosition[1]);
-                        if (!Double.isNaN(mapDistance) && mapDistance <= radiusKm) {
+                        if (!Double.isNaN(mapDistance) && mapDistance <= mapRadiusKm) {
                             allAircraft.put(compactAircraft(plane,
                                     plane.optString("hex", "unknown").replace("~", ""),
                                     plane.optString("flight", "").trim(), mapDistance,
@@ -371,7 +399,7 @@ public class MonitorService extends Service implements LocationListener {
                                     mapPosition[0], mapPosition[1]));
                         }
                     }
-                    if (!MilitaryClassifier.isMilitary(plane)) continue;
+                    if (!isAlertTarget(plane)) continue;
                     // Airplanes.live's free-plan interval is 180 seconds. Keep its last
                     // provider position until the next permitted cross-check instead of
                     // flapping a source-only contact in and out every minute.
@@ -388,7 +416,7 @@ public class MonitorService extends Service implements LocationListener {
                     String callsign = plane.optString("flight", "").trim();
                     double altitudeFt = altitudeFeet(
                             plane.opt("alt_geom"), plane.opt("alt_baro"));
-                    militaryCount++;
+                    alertTargetCount++;
                     currentlyInside.add(hex);
                     JSONObject compact = compactAircraft(plane, hex, callsign,
                             distanceKm, altitudeFt, aircraftLat, aircraftLon);
@@ -416,9 +444,9 @@ public class MonitorService extends Service implements LocationListener {
             }
             publishSessionHistory();
             latestAllAircraftJson = allAircraft.toString();
-            publishTelemetry("connected", militaryCount, liveAircraft, nearestCallsign,
+            publishTelemetry("connected", alertTargetCount, liveAircraft, nearestCallsign,
                     nearestDistanceKm, nearestAltitudeFt);
-            updateStatus("LIVE // " + nowTime(), "", militaryCount);
+            updateStatus("LIVE // " + nowTime(), "", alertTargetCount);
         } catch (Exception e) {
             AppPreferences.get(this).edit().putString(AppPreferences.KEY_CONNECTION, "error").apply();
             updateStatus("SIGNAL LOST", "", 0);
@@ -462,31 +490,23 @@ public class MonitorService extends Service implements LocationListener {
         }
     }
 
-    private synchronized void increaseRateLimitBackoff(String provider) {
+    private void increaseRateLimitBackoff(String provider) {
         long now = System.currentTimeMillis();
         if ("adsb.lol".equals(provider)) {
-            if (now >= adsbLolBackoffUntilMs) adsbLolBackoffMs = 0L;
-            adsbLolBackoffMs += 500L;
-            adsbLolBackoffUntilMs = now + 60_000L;
+            adsbLolBackoff.recordRateLimit(now);
         } else if ("airplanes.live".equals(provider)) {
-            if (now >= airplanesBackoffUntilMs) airplanesBackoffMs = 0L;
-            airplanesBackoffMs += 500L;
-            airplanesBackoffUntilMs = now + 60_000L;
+            airplanesBackoff.recordRateLimit(now);
         }
     }
 
-    private synchronized long nextAdsbLolDelayMs() {
-        if (System.currentTimeMillis() >= adsbLolBackoffUntilMs) {
-            adsbLolBackoffMs = 0L;
-        }
-        return ADSB_LOL_BASE_REFRESH_MS + adsbLolBackoffMs;
+    private long nextAdsbLolDelayMs() {
+        return adsbLolBackoff.delayMs(
+                ADSB_LOL_BASE_REFRESH_MS, System.currentTimeMillis());
     }
 
-    private synchronized long nextAirplanesDelayMs() {
-        if (System.currentTimeMillis() >= airplanesBackoffUntilMs) {
-            airplanesBackoffMs = 0L;
-        }
-        return AIRPLANES_REFRESH_MS + airplanesBackoffMs;
+    private long nextAirplanesDelayMs() {
+        return airplanesBackoff.delayMs(
+                AIRPLANES_REFRESH_MS, System.currentTimeMillis());
     }
 
     private JSONArray awaitOptional(Future<JSONArray> future) {
@@ -630,6 +650,11 @@ public class MonitorService extends Service implements LocationListener {
         return altitudeValueFeet(barometricValue);
     }
 
+    static boolean isAlertTarget(JSONObject aircraft) {
+        return MilitaryClassifier.isMilitary(aircraft)
+                || AircraftData.isRotorcraft(aircraft);
+    }
+
     private static double altitudeValueFeet(Object value) {
         if (value instanceof Number) {
             double feet = ((Number) value).doubleValue();
@@ -666,15 +691,54 @@ public class MonitorService extends Service implements LocationListener {
                 geometricMslAltitudeOrNull(plane, latitude, longitude));
         item.put("qnh_hpa", finiteValueOrNull(plane.optDouble("nav_qnh", Double.NaN)));
         item.put("speed_knots", plane.optDouble("gs", 0));
+        item.put("true_airspeed_knots",
+                finiteValueOrNull(plane.optDouble("tas", Double.NaN)));
+        item.put("indicated_airspeed_knots",
+                finiteValueOrNull(plane.optDouble("ias", Double.NaN)));
+        item.put("mach", finiteValueOrNull(plane.optDouble("mach", Double.NaN)));
         item.put("track", plane.optDouble("track", 0));
+        item.put("true_heading",
+                finiteValueOrNull(plane.optDouble("true_heading", Double.NaN)));
+        item.put("magnetic_heading",
+                finiteValueOrNull(plane.optDouble("mag_heading", Double.NaN)));
+        item.put("track_rate",
+                finiteValueOrNull(plane.optDouble("track_rate", Double.NaN)));
+        item.put("roll", finiteValueOrNull(plane.optDouble("roll", Double.NaN)));
         item.put("vertical_rate", plane.optDouble("geom_rate",
                 plane.optDouble("baro_rate", 0)));
+        item.put("selected_altitude_ft", finiteValueOrNull(plane.optDouble(
+                "nav_altitude_mcp", plane.optDouble("nav_altitude_fms", Double.NaN))));
+        item.put("selected_heading",
+                finiteValueOrNull(plane.optDouble("nav_heading", Double.NaN)));
+        item.put("nav_modes", plane.optJSONArray("nav_modes") == null
+                ? plane.optString("nav_modes", "") : plane.optJSONArray("nav_modes"));
+        item.put("wind_speed_knots",
+                finiteValueOrNull(plane.optDouble("ws", Double.NaN)));
+        item.put("wind_direction",
+                finiteValueOrNull(plane.optDouble("wd", Double.NaN)));
+        item.put("outside_air_temp_c",
+                finiteValueOrNull(plane.optDouble("oat", Double.NaN)));
+        item.put("total_air_temp_c",
+                finiteValueOrNull(plane.optDouble("tat", Double.NaN)));
         item.put("rssi", finiteValueOrNull(plane.optDouble("rssi", Double.NaN)));
         item.put("messages", plane.optLong("messages", 0L));
+        item.put("adsb_version", plane.has("version")
+                ? plane.optInt("version", -1) : JSONObject.NULL);
+        item.put("nac_p", plane.has("nac_p")
+                ? plane.optInt("nac_p", -1) : JSONObject.NULL);
+        item.put("nac_v", plane.has("nac_v")
+                ? plane.optInt("nac_v", -1) : JSONObject.NULL);
+        item.put("nic_baro", plane.has("nic_baro")
+                ? plane.optInt("nic_baro", -1) : JSONObject.NULL);
+        item.put("sil", plane.has("sil")
+                ? plane.optInt("sil", -1) : JSONObject.NULL);
+        item.put("rc_m", finiteValueOrNull(plane.optDouble("rc", Double.NaN)));
         item.put("squawk", plane.optString("squawk", ""));
         item.put("lat", latitude);
         item.put("lon", longitude);
         item.put("seen", plane.optDouble("seen", 0));
+        item.put("seen_position", plane.optDouble("seen_pos",
+                plane.optDouble("seen", 0)));
         item.put("emergency", plane.optString("emergency", "none"));
         return item;
     }

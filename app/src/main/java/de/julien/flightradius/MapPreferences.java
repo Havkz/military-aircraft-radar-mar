@@ -16,20 +16,25 @@ final class MapPreferences {
     static final String HARDWARE_TRACKS = "map_hardware_tracks";
     static final String LABEL_UNITS = "map_label_units";
     static final String SMALL_LABELS = "map_small_labels";
+    static final String SMALL_WIND_LABELS = "map_small_wind_labels";
     static final String GEOMETRIC_ALTITUDE = "map_geometric_altitude";
     static final String EGM_CONVERSION = "map_egm_conversion";
     static final String QNH_CORRECTION = "map_qnh_correction";
     static final String TRACK_UTC = "map_track_utc";
+    static final String LIVE_TRACK_UTC = "map_live_track_utc";
+    static final String HISTORIC_TRACK_UTC = "map_historic_track_utc";
     static final String LAST_LEG_ONLY = "map_last_leg_only";
     static final String ALTITUDE_CHART = "map_altitude_chart";
     static final String INFOBLOCK = "map_infoblock";
     static final String WIDE_INFOBLOCK = "map_wide_infoblock";
+    static final String HOVER_INFOBLOCK = "map_hover_infoblock";
     static final String AUTO_SELECT = "map_auto_select";
     static final String PICTURES_PLANESPOTTERS = "map_pictures_planespotters";
     static final String PICTURES_PLANESPOTTING = "map_pictures_planespotting";
     static final String GROUND_VEHICLES = "map_ground_vehicles";
     static final String NON_ICAO = "map_non_icao";
     static final String UPDATE_GPS = "map_update_gps";
+    static final String INCLUDE_FILTERS_URL = "map_include_filters_url";
     static final String KEEP_FADED = "map_keep_faded";
     static final String DEBUG_TRACKS = "map_debug_tracks";
     static final String DEBUG_SHOW_ALL = "map_debug_show_all";
@@ -37,10 +42,14 @@ final class MapPreferences {
     private static final String[] KEYS = {
             TEXT_SCALE, ICON_SCALE, DARK, DARKER, DIM, COLORED_PLANES,
             COLORED_TRAILS, HARDWARE_TRACKS, LABEL_UNITS, SMALL_LABELS,
+            SMALL_WIND_LABELS,
             GEOMETRIC_ALTITUDE, EGM_CONVERSION, QNH_CORRECTION,
-            TRACK_UTC, LAST_LEG_ONLY, ALTITUDE_CHART, INFOBLOCK, WIDE_INFOBLOCK,
+            TRACK_UTC, LIVE_TRACK_UTC, HISTORIC_TRACK_UTC,
+            LAST_LEG_ONLY, ALTITUDE_CHART, INFOBLOCK, WIDE_INFOBLOCK,
+            HOVER_INFOBLOCK,
             AUTO_SELECT, PICTURES_PLANESPOTTERS, PICTURES_PLANESPOTTING,
-            GROUND_VEHICLES, NON_ICAO, UPDATE_GPS, KEEP_FADED, DEBUG_TRACKS,
+            GROUND_VEHICLES, NON_ICAO, UPDATE_GPS, INCLUDE_FILTERS_URL,
+            KEEP_FADED, DEBUG_TRACKS,
             DEBUG_SHOW_ALL
     };
 
@@ -60,15 +69,23 @@ final class MapPreferences {
             result.put("hardwareTracks", preferences.getBoolean(HARDWARE_TRACKS, true));
             result.put("labelUnits", preferences.getBoolean(LABEL_UNITS, true));
             result.put("smallLabels", preferences.getBoolean(SMALL_LABELS, true));
+            result.put("smallWindLabels",
+                    preferences.getBoolean(SMALL_WIND_LABELS, true));
             result.put("geometricAltitude",
                     preferences.getBoolean(GEOMETRIC_ALTITUDE, false));
             result.put("egmConversion", preferences.getBoolean(EGM_CONVERSION, false));
             result.put("qnhCorrection", preferences.getBoolean(QNH_CORRECTION, false));
-            result.put("trackUtc", preferences.getBoolean(TRACK_UTC, true));
+            boolean legacyTrackUtc = preferences.getBoolean(TRACK_UTC, true);
+            result.put("liveTrackUtc",
+                    preferences.getBoolean(LIVE_TRACK_UTC, false));
+            result.put("historicTrackUtc",
+                    preferences.getBoolean(HISTORIC_TRACK_UTC, legacyTrackUtc));
             result.put("lastLegOnly", preferences.getBoolean(LAST_LEG_ONLY, true));
             result.put("altitudeChart", preferences.getBoolean(ALTITUDE_CHART, true));
             result.put("infoblock", preferences.getBoolean(INFOBLOCK, true));
             result.put("wideInfoblock", preferences.getBoolean(WIDE_INFOBLOCK, false));
+            result.put("hoverInfoblock",
+                    preferences.getBoolean(HOVER_INFOBLOCK, false));
             result.put("autoSelect", preferences.getBoolean(AUTO_SELECT, false));
             result.put("picturesPlanespotters",
                     preferences.getBoolean(PICTURES_PLANESPOTTERS, true));
@@ -77,6 +94,8 @@ final class MapPreferences {
             result.put("groundVehicles", preferences.getBoolean(GROUND_VEHICLES, true));
             result.put("nonIcao", preferences.getBoolean(NON_ICAO, true));
             result.put("updateGps", preferences.getBoolean(UPDATE_GPS, true));
+            result.put("includeFiltersUrl",
+                    preferences.getBoolean(INCLUDE_FILTERS_URL, false));
             result.put("keepFaded", preferences.getBoolean(KEEP_FADED, false));
             result.put("debugTracks", preferences.getBoolean(DEBUG_TRACKS, false));
             result.put("debugShowAll", preferences.getBoolean(DEBUG_SHOW_ALL, false));

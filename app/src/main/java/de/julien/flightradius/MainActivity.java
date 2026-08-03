@@ -60,6 +60,7 @@ public class MainActivity extends Activity {
     private int currentPage;
     private int restoredPage;
     private boolean pageAnimating;
+    private boolean activityResumed;
     private int background;
     private int surface;
     private int text;
@@ -289,6 +290,7 @@ public class MainActivity extends Activity {
         final View previous = pageFor(from);
         final View next = pageFor(target);
         currentPage = target;
+        updateMapVisibility();
         updateNavigation();
         if (next.getParent() != null) ((ViewGroup) next.getParent()).removeView(next);
         int distance = Math.max(pageHost.getWidth(), getResources().getDisplayMetrics().widthPixels);
@@ -395,6 +397,8 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        activityResumed = true;
+        updateMapVisibility();
         if (!signature().equals(settingsSignature)) {
             recreate();
             return;
@@ -404,13 +408,20 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onPause() {
+        activityResumed = false;
+        updateMapVisibility();
         uiHandler.removeCallbacks(liveUi);
         super.onPause();
     }
 
     @Override protected void onDestroy() {
+        MonitorService.setMapVisible(false);
         if (mapPanel != null) mapPanel.destroy();
         super.onDestroy();
+    }
+
+    private void updateMapVisibility() {
+        MonitorService.setMapVisible(activityResumed && currentPage == 1);
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {

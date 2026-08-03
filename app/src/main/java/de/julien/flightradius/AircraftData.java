@@ -8,9 +8,12 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 final class AircraftData {
     private static final double MAX_LAST_POSITION_AGE_SECONDS = 60d;
+    private static final Pattern ICAO_HELICOPTER_DESCRIPTION =
+            Pattern.compile("^H[0-9][A-Z]$");
     private static final String[] POSITION_FIELDS = {
             "lat", "lon", "seen_pos", "lastPosition", "alt_baro", "alt_geom",
             "gs", "track", "baro_rate", "geom_rate", "type", "mlat", "tisb",
@@ -84,7 +87,11 @@ final class AircraftData {
         if ("A7".equalsIgnoreCase(aircraft.optString("category", ""))) return true;
         String description = (aircraft.optString("desc", "") + " "
                 + aircraft.optString("typeDescription", "")).toUpperCase(Locale.US);
-        return description.contains("HELICOPTER") || description.contains("ROTORCRAFT");
+        String compactDescription = aircraft.optString("desc", "")
+                .trim().toUpperCase(Locale.US);
+        return description.contains("HELICOPTER")
+                || description.contains("ROTORCRAFT")
+                || ICAO_HELICOPTER_DESCRIPTION.matcher(compactDescription).matches();
     }
 
     private static void appendMerged(Map<String, JSONObject> byHex, JSONArray withoutHex,

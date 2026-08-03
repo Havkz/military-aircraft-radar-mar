@@ -32,10 +32,11 @@ Any future use of Flightradar24 content or automated access would require a new 
 
 ## Airplanes.live
 
-Android requests Airplanes.live's documented nearby-aircraft API directly. The free plan is limited to 500 requests per day and is described as non-commercial with no service-level agreement. MAR therefore limits this source to one request every 180 seconds. Data is merged and deduplicated locally and is not republished as a separate database.
+Android requests Airplanes.live's documented nearby-aircraft API directly. The free plan is limited to 500 requests per day and is described as non-commercial with no service-level agreement. MAR therefore limits this source to one request every 180 seconds. The request area expands to the documented 250 NM endpoint maximum only while the map tab is visible; this does not change notification eligibility. Data is merged and deduplicated locally and is not republished as a separate database.
 
 - API guide: https://airplanes.live/api-guide/
 - API plans: https://airplanes.live/api/
+- Terms of Use: https://airplanes.live/terms-of-use/
 - Privacy notice: https://airplanes.live/privacy/
 
 ## ADS-B Exchange
@@ -75,4 +76,4 @@ ADSB.lol, Airplanes.live, Flightradar24, ADS-B Exchange, OpenStreetMap, Leaflet,
 
 ## Safety
 
-All aircraft data is provided as-is and may be delayed, incomplete, incorrectly classified, or inaccurate. MAR must not be used for navigation, flight safety, air traffic control, flight planning, law enforcement, or operational decisions.
+All aircraft data is provided as-is and may be delayed, incomplete, incorrectly classified, or inaccurate. Military and rotorcraft detection depends on fields supplied by the providers; a target with missing type, category, description, database flags, and recognizable callsign cannot be classified reliably. MAR must not be used for navigation, flight safety, air traffic control, flight planning, law enforcement, or operational decisions.

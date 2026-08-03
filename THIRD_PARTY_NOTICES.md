@@ -23,6 +23,7 @@ The vector path data is embedded locally so the app does not contact Google or l
 Android retrieves nearby-aircraft data from the documented Airplanes.live API under its published API conditions and rate limits.
 
 - API guide: https://airplanes.live/api-guide/
+- Terms of Use: https://airplanes.live/terms-of-use/
 - Privacy: https://airplanes.live/privacy/
 
 ## Leaflet and OpenStreetMap
