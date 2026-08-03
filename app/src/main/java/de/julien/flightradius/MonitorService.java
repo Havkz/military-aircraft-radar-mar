@@ -747,8 +747,8 @@ public class MonitorService extends Service implements LocationListener {
         item.put("callsign", callsign);
         item.put("display_name", AircraftData.displayName(plane));
         item.put("registration", plane.optString("r", ""));
-        item.put("country", plane.optString("country",
-                plane.optString("country_name", "")));
+        item.put("country", IcaoCountry.providerOrHex(plane.optString("country",
+                plane.optString("country_name", "")), hex));
         item.put("operator", plane.optString("ownOp",
                 plane.optString("operator", "")));
         item.put("type", plane.optString("t", ""));
