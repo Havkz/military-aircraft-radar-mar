@@ -89,6 +89,7 @@ final class MapL10n {
             {"movement", "Movement"},
             {"signal_accuracy", "Signal & accuracy"},
             {"too_many_traffic", "Too many aircraft in view (limit 1,500). Zoom in to continue loading."},
+            {"single_request_coverage", "One live request covers the central 250 NM. Zoom in for complete traffic."},
             {"important", "Important"},
             {"data_provider", "Data provider"},
             {"emergency", "Emergency"},
