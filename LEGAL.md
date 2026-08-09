@@ -83,4 +83,4 @@ ADSB.lol, Airplanes.live, Flightradar24, ADS-B Exchange, OpenStreetMap, Leaflet,
 
 ## Safety
 
-All aircraft data is provided as-is and may be delayed, incomplete, incorrectly classified, or inaccurate. Military and rotorcraft detection depends on fields supplied by the providers; a target with missing type, category, description, database flags, and recognizable callsign cannot be classified reliably. MAR must not be used for navigation, flight safety, air traffic control, flight planning, law enforcement, or operational decisions.
+All aircraft data is provided as-is and may be delayed, incomplete, incorrectly classified, or inaccurate. Military detection combines explicit provider flags with recognizable military callsign prefixes, operators, registrations, descriptions, and military-specific type codes. Rotorcraft detection uses provider category and description fields. These inferences can produce false positives or miss targets when identifying data is absent. MAR must not be used for navigation, flight safety, air traffic control, flight planning, law enforcement, or operational decisions.

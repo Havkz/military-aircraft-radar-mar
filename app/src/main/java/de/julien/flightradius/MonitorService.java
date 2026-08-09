@@ -21,9 +21,6 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.PowerManager;
-import android.text.SpannableString;
-import android.text.Spanned;
-import android.text.style.ForegroundColorSpan;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -60,7 +57,6 @@ public class MonitorService extends Service implements LocationListener {
     static final String ACTION_RADIUS_CHANGED = "de.julien.flightradius.RADIUS_CHANGED";
     static final String ACTION_SOURCES_CHANGED = "de.julien.flightradius.SOURCES_CHANGED";
     static final String ACTION_VIEWPORT_CHANGED = "de.julien.flightradius.VIEWPORT_CHANGED";
-    private static final long DISMISSED_RESEND_DELAY_MS = 5 * 60 * 1000L;
     private static final long ADSB_LOL_MILITARY_REFRESH_MS = 60_000L;
     private static final long ADSB_LOL_BASE_REFRESH_MS = 1_000L;
     private static final long AIRPLANES_REFRESH_MS = 180_000L;
@@ -90,10 +86,10 @@ public class MonitorService extends Service implements LocationListener {
     private static final Map<String, JSONObject> mapAircraftCache = new LinkedHashMap<>();
     private static final Map<String, Long> mapAircraftCacheTimes = new HashMap<>();
 
-    private final Map<String, JSONObject> lastKnownAlerts = new HashMap<>();
+    private static final long NOTIFICATION_ENTRY_GRACE_MS = 2 * 60_000L;
+    private final Map<String, Long> notifiedInsideLastSeen = new HashMap<>();
     private final Map<String, JSONObject> sessionHistory = new LinkedHashMap<>();
     private final Map<String, Double> geoidOffsetFeet = new HashMap<>();
-    private final Map<String, Long> notificationSuppressedUntil = new ConcurrentHashMap<>();
     private final Map<String, Long> customConditionSince = new ConcurrentHashMap<>();
     private final Set<Integer> aircraftNotificationIds = Collections.newSetFromMap(
             new ConcurrentHashMap<Integer, Boolean>());
@@ -287,8 +283,6 @@ public class MonitorService extends Service implements LocationListener {
         if (intent != null && ACTION_NOTIFICATION_DISMISSED.equals(intent.getAction())) {
             String hex = intent.getStringExtra("hex");
             if (hex != null && !hex.isEmpty()) {
-                notificationSuppressedUntil.put(hex,
-                        System.currentTimeMillis() + DISMISSED_RESEND_DELAY_MS);
                 aircraftNotificationIds.remove(hex.hashCode());
                 getSystemService(NotificationManager.class).cancel(hex.hashCode());
             }
@@ -561,7 +555,11 @@ public class MonitorService extends Service implements LocationListener {
                     JSONObject compact = compactAircraft(plane, hex, callsign,
                             distanceKm, altitudeFt, aircraftLat, aircraftLon);
                     if (!customReason.isEmpty()) compact.put("alert_reason", customReason);
-                    else if (AircraftData.isRotorcraft(plane)) {
+                    else if (MilitaryClassifier.isMilitary(plane)
+                            && AircraftData.isRotorcraft(plane)) {
+                        compact.put("alert_reason", MapL10n.t(this, "military") + " · "
+                                + MapL10n.t(this, "rotorcraft"));
+                    } else if (AircraftData.isRotorcraft(plane)) {
                         compact.put("alert_reason", MapL10n.t(this, "rotorcraft"));
                     } else compact.put("alert_reason", MapL10n.t(this, "military"));
                     liveAircraft.put(compact);
@@ -574,18 +572,15 @@ public class MonitorService extends Service implements LocationListener {
                         nearestAltitudeFt = altitudeFt;
                     }
                     if (!hex.isEmpty() && !"unknown".equals(hex)) {
-                        lastKnownAlerts.put(hex, compact);
-                        showAircraftNotification(compact, true);
+                        boolean newEntry = markNotificationInside(
+                                notifiedInsideLastSeen, hex, scanTime);
+                        if (newEntry) showAircraftNotification(compact);
                     }
                 }
             }
 
             markMissingAircraftOutOfRange(currentlyInside);
-            for (Map.Entry<String, JSONObject> entry : lastKnownAlerts.entrySet()) {
-                if (!currentlyInside.contains(entry.getKey())) {
-                    showAircraftNotification(entry.getValue(), false);
-                }
-            }
+            pruneNotificationEntryCycles(scanTime);
             publishSessionHistory();
             updateMapAircraftCache(allAircraft, scanTime);
             latestAllAircraftJson = visibleMapAircraftCacheJson(scanTime).toString();
@@ -862,39 +857,16 @@ public class MonitorService extends Service implements LocationListener {
                 statusNotification(state, detail, count));
     }
 
-    private void showAircraftNotification(JSONObject aircraft, boolean inRange) {
+    private void showAircraftNotification(JSONObject aircraft) {
         if (!running || !AppPreferences.get(this)
                 .getBoolean(AppPreferences.KEY_RUNNING, false)) return;
         String callsign = AircraftData.normalizeCallsign(aircraft.optString("callsign", ""));
         String displayName = callsign.isEmpty() ? "NO CALLSIGN" : callsign;
         String hex = aircraft.optString("hex", "");
         if (hex.isEmpty()) return;
-        long now = System.currentTimeMillis();
-        Long suppressedUntil = notificationSuppressedUntil.get(hex);
-        if (suppressedUntil != null) {
-            if (!inRange || suppressedUntil > now) return;
-            notificationSuppressedUntil.remove(hex);
-        }
-
-        double distanceKm = aircraft.optDouble("distance_km", Double.NaN);
-        double altitudeFt = aircraft.isNull("altitude_ft")
-                ? Double.NaN : aircraft.optDouble("altitude_ft", Double.NaN);
         double aircraftLat = aircraft.optDouble("lat", Double.NaN);
         double aircraftLon = aircraft.optDouble("lon", Double.NaN);
-        CharSequence details;
-        String alertReason = aircraft.optString("alert_reason", "");
-        if (inRange) {
-            details = (alertReason.isEmpty() ? "" : alertReason + "  •  ")
-                    + AppPreferences.distance(this, distanceKm) + "  •  "
-                    + AppPreferences.altitude(this, altitudeFt);
-        } else {
-            String state = L10n.t(this, "out_of_range");
-            SpannableString redState = new SpannableString(state + "  •  "
-                    + AppPreferences.altitude(this, altitudeFt));
-            redState.setSpan(new ForegroundColorSpan(MARColors.RED),
-                    0, state.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            details = redState;
-        }
+        String details = notificationDetails(aircraft);
         Intent trackerIntent = new Intent(this, MainActivity.class)
                 .setData(android.net.Uri.parse("mar://aircraft/" + android.net.Uri.encode(hex)))
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -917,8 +889,7 @@ public class MonitorService extends Service implements LocationListener {
                 .setContentTitle(displayName)
                 .setContentText(details)
                 .setStyle(new Notification.BigTextStyle().bigText(details))
-                .setSubText(alertReason.isEmpty() ? displayName : alertReason)
-                .setColor(inRange ? MARColors.ORANGE : MARColors.RED)
+                .setColor(MARColors.ORANGE)
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setContentIntent(tracker)
                 .setDeleteIntent(dismissed)
@@ -928,6 +899,52 @@ public class MonitorService extends Service implements LocationListener {
         int notificationId = hex.hashCode();
         aircraftNotificationIds.add(notificationId);
         getSystemService(NotificationManager.class).notify(notificationId, notification);
+    }
+
+    static String notificationDetails(JSONObject aircraft) {
+        List<String> details = new ArrayList<>();
+        String reason = aircraft.optString("alert_reason", "").trim();
+        if (!reason.isEmpty()) details.add(reason);
+        String operator = aircraft.optString("operator", "").trim();
+        String registration = aircraft.optString("registration", "").trim();
+        String type = aircraft.optString("type", "").trim();
+        String second = !operator.isEmpty() ? operator
+                : !registration.isEmpty() ? registration : type;
+        if (!second.isEmpty() && !second.equalsIgnoreCase(reason)) details.add(second);
+        StringBuilder joined = new StringBuilder();
+        for (String detail : details) {
+            if (joined.length() > 0) joined.append("  •  ");
+            joined.append(detail);
+        }
+        return joined.toString();
+    }
+
+    static boolean markNotificationInside(Map<String, Long> entries,
+                                          String hex, long now) {
+        boolean newEntry = !entries.containsKey(hex);
+        entries.put(hex, now);
+        return newEntry;
+    }
+
+    static List<String> expiredNotificationEntries(Map<String, Long> entries, long now) {
+        List<String> expired = new ArrayList<>();
+        for (Map.Entry<String, Long> entry : entries.entrySet()) {
+            if (now - entry.getValue() >= NOTIFICATION_ENTRY_GRACE_MS) {
+                expired.add(entry.getKey());
+            }
+        }
+        return expired;
+    }
+
+    private void pruneNotificationEntryCycles(long now) {
+        List<String> expired = expiredNotificationEntries(notifiedInsideLastSeen, now);
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        for (String hex : expired) {
+            notifiedInsideLastSeen.remove(hex);
+            int notificationId = hex.hashCode();
+            aircraftNotificationIds.remove(notificationId);
+            manager.cancel(notificationId);
+        }
     }
 
     static double altitudeFeet(Object geometricValue, Object barometricValue) {
