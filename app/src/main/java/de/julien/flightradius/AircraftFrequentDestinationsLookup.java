@@ -34,14 +34,16 @@ final class AircraftFrequentDestinationsLookup {
     private static final long CACHE_MS = 24 * 60 * 60_000L;
     private static final String HOST = "https://globe.airplanes.live";
     private static final String USER_AGENT = "Mozilla/5.0 (Linux; Android) "
-            + "MilitaryAircraftRadar/1.2.29";
+            + "MilitaryAircraftRadar/1.2.30";
 
     private AircraftFrequentDestinationsLookup() { }
 
     static JSONObject find(Context context, String rawHex) {
         String hex = normalizeHex(rawHex);
         if (hex.isEmpty()) return empty();
-        File cache = new File(context.getCacheDir(), "destinations-" + hex + ".json");
+        // v2 invalidates empty results produced while the packaged airport asset was opened
+        // under its pre-aapt2 .gz filename.
+        File cache = new File(context.getCacheDir(), "destinations-v2-" + hex + ".json");
         if (cache.isFile() && System.currentTimeMillis() - cache.lastModified() < CACHE_MS) {
             try { return new JSONObject(read(new FileInputStream(cache))); }
             catch (Exception ignored) { }

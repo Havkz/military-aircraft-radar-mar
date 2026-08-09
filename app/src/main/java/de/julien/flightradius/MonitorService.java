@@ -148,7 +148,6 @@ public class MonitorService extends Service implements LocationListener {
         if (hex.equals(isolatedMapHex)) return false;
         isolatedMapHex = hex;
         mapViewportChangedAtMs = System.currentTimeMillis();
-        clearMapAircraftCache();
         return true;
     }
 

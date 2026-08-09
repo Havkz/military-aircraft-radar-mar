@@ -61,10 +61,16 @@ final class AirportDirectory {
         synchronized (AirportDirectory.class) {
             if (airports != null) return airports;
             try {
-                airports = parse(new GZIPInputStream(
-                        context.getAssets().open("airports_compact.tsv.gz")));
-            } catch (Exception ignored) {
-                airports = Collections.emptyList();
+                // aapt2 expands .gz assets and exposes this file without the .gz suffix.
+                airports = parse(context.getAssets().open("airports_compact.tsv"));
+            } catch (Exception unpackedAssetError) {
+                try {
+                    // Keep this fallback for environments that preserve the source filename.
+                    airports = parse(new GZIPInputStream(
+                            context.getAssets().open("airports_compact.tsv.gz")));
+                } catch (Exception ignored) {
+                    airports = Collections.emptyList();
+                }
             }
             return airports;
         }
