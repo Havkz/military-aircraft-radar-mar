@@ -14,7 +14,7 @@ import java.util.zip.GZIPInputStream;
 final class AircraftTraceLookup {
     private static final int MAX_TRACE_POINTS = 2_000;
     private static final String USER_AGENT =
-            "MilitaryAircraftRadar/1.2.23 (+https://github.com/Havkz/military-aircraft-radar-mar)";
+            "MilitaryAircraftRadar/1.2.24 (+https://github.com/Havkz/military-aircraft-radar-mar)";
 
     private AircraftTraceLookup() { }
 
