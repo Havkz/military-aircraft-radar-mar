@@ -9,12 +9,17 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Locale;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.zip.GZIPInputStream;
 
 final class AircraftTraceLookup {
     private static final int MAX_TRACE_POINTS = 2_000;
     private static final String USER_AGENT =
-            "MilitaryAircraftRadar/1.2.24 (+https://github.com/Havkz/military-aircraft-radar-mar)";
+            "MilitaryAircraftRadar/1.2.25 (+https://github.com/Havkz/military-aircraft-radar-mar)";
 
     private AircraftTraceLookup() { }
 
@@ -22,12 +27,29 @@ final class AircraftTraceLookup {
         String hex = rawHex == null ? "" : rawHex.replace("~", "")
                 .trim().toLowerCase(Locale.US).replaceAll("[^0-9a-f]", "");
         if (hex.length() != 6) return new JSONArray();
-        String endpoint = "https://globe.adsb.lol/data/traces/" + hex.substring(4)
+        String path = "/data/traces/" + hex.substring(4)
                 + "/trace_full_" + hex + ".json";
+        ExecutorService sources = Executors.newFixedThreadPool(2);
+        CompletionService<JSONArray> completed = new ExecutorCompletionService<>(sources);
+        Future<JSONArray> adsbLol = completed.submit(
+                () -> parse(get("https://adsb.lol" + path, ""), MAX_TRACE_POINTS));
+        Future<JSONArray> airplanesLive = completed.submit(() -> parse(get(
+                "https://globe.airplanes.live" + path,
+                "https://globe.airplanes.live/"), MAX_TRACE_POINTS));
         try {
-            return parse(get(endpoint), MAX_TRACE_POINTS);
-        } catch (Exception ignored) {
+            for (int i = 0; i < 2; i++) {
+                try {
+                    JSONArray result = completed.take().get();
+                    if (result.length() > 0) {
+                        adsbLol.cancel(true);
+                        airplanesLive.cancel(true);
+                        return result;
+                    }
+                } catch (Exception ignored) { }
+            }
             return new JSONArray();
+        } finally {
+            sources.shutdownNow();
         }
     }
 
@@ -63,7 +85,7 @@ final class AircraftTraceLookup {
         result.put(new JSONArray().put(latitude).put(longitude).put(altitude).put(timeMs));
     }
 
-    private static String get(String endpoint) throws Exception {
+    private static String get(String endpoint, String referer) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
         try {
             connection.setConnectTimeout(8_000);
@@ -71,6 +93,7 @@ final class AircraftTraceLookup {
             connection.setRequestProperty("User-Agent", USER_AGENT);
             connection.setRequestProperty("Accept", "application/json");
             connection.setRequestProperty("Accept-Encoding", "gzip");
+            if (!referer.isEmpty()) connection.setRequestProperty("Referer", referer);
             if (connection.getResponseCode() != 200) return "{}";
             InputStream stream = connection.getInputStream();
             if ("gzip".equalsIgnoreCase(connection.getContentEncoding())) {

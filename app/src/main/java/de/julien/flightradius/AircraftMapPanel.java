@@ -21,7 +21,8 @@ import java.util.concurrent.Executors;
 final class AircraftMapPanel extends FrameLayout {
     private final Activity host;
     private final WebView webView;
-    private final ExecutorService lookupExecutor = Executors.newFixedThreadPool(2);
+    private final ExecutorService photoExecutor = Executors.newFixedThreadPool(2);
+    private final ExecutorService traceExecutor = Executors.newFixedThreadPool(2);
     private boolean ready;
     private boolean pendingRefresh;
     private boolean pageVisible;
@@ -45,7 +46,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.24 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.25 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
@@ -164,7 +165,7 @@ final class AircraftMapPanel extends FrameLayout {
 
         @JavascriptInterface public void requestAircraftPhoto(
                 String hex, String registration, String aircraftType) {
-            lookupExecutor.submit(() -> {
+            photoExecutor.submit(() -> {
                 JSONObject result = AircraftPhotoLookup.find(registration, aircraftType);
                 String script = "window.marPhotoResult&&window.marPhotoResult("
                         + JSONObject.quote(hex == null ? "" : hex) + ","
@@ -177,7 +178,7 @@ final class AircraftMapPanel extends FrameLayout {
         }
 
         @JavascriptInterface public void requestAircraftTrace(String hex) {
-            lookupExecutor.submit(() -> {
+            traceExecutor.submit(() -> {
                 org.json.JSONArray result = AircraftTraceLookup.find(hex);
                 String script = "window.marTraceResult&&window.marTraceResult("
                         + JSONObject.quote(hex == null ? "" : hex) + ","
@@ -191,7 +192,8 @@ final class AircraftMapPanel extends FrameLayout {
 
     void destroy() {
         ready = false;
-        lookupExecutor.shutdownNow();
+        photoExecutor.shutdownNow();
+        traceExecutor.shutdownNow();
         webView.stopLoading();
         webView.destroy();
     }

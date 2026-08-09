@@ -179,11 +179,15 @@ public class MonitorService extends Service implements LocationListener {
 
     private final Runnable pollTask = new Runnable() {
         @Override public void run() {
+            long startedAt = System.currentTimeMillis();
             try {
                 pollAircraft();
             }
             finally {
-                if (worker != null) worker.postDelayed(this, nextAdsbLolDelayMs());
+                if (worker != null) {
+                    long elapsed = Math.max(0L, System.currentTimeMillis() - startedAt);
+                    worker.postDelayed(this, Math.max(0L, nextAdsbLolDelayMs() - elapsed));
+                }
             }
         }
     };
@@ -441,6 +445,15 @@ public class MonitorService extends Service implements LocationListener {
                 cachedAdsbLolRegional = regional;
                 lastAdsbLolRegionalFetchMs = now;
                 receivedLiveFeed = true;
+                if (expandedMap) {
+                    long receivedAt = System.currentTimeMillis();
+                    JSONArray immediateMapAircraft = compactMapAircraft(
+                            taggedCopy(regional, "ADSB.lol", 0d),
+                            queryLatitude, queryLongitude, radiusNm);
+                    updateMapAircraftCache(immediateMapAircraft, receivedAt);
+                    latestAllAircraftJson = visibleMapAircraftCacheJson(receivedAt).toString();
+                    mapLoading = false;
+                }
             }
             JSONArray alertAircraft = awaitOptional(alertsFuture);
             if (alertAircraft != null) {
@@ -484,8 +497,8 @@ public class MonitorService extends Service implements LocationListener {
                     taggedCopy(cachedAdsbExchange, "ADS-B Exchange",
                             ageSeconds(now, lastAdsbExchangeFetchMs)));
             JSONArray liveAircraft = new JSONArray();
-            JSONArray allAircraft = new JSONArray();
-            double mapCacheRadiusKm = radiusNm * NAUTICAL_MILE_KM;
+            JSONArray allAircraft = compactMapAircraft(
+                    aircraft, queryLatitude, queryLongitude, radiusNm);
             Set<String> currentlyInside = new HashSet<>();
             long scanTime = System.currentTimeMillis();
             int alertTargetCount = 0;
@@ -496,23 +509,6 @@ public class MonitorService extends Service implements LocationListener {
             if (aircraft != null) {
                 for (int i = 0; i < aircraft.length(); i++) {
                     JSONObject plane = aircraft.optJSONObject(i);
-                    double[] mapPosition = AircraftData.recentPosition(
-                            plane, MAP_MAX_POSITION_AGE_SECONDS);
-                    if (mapPosition != null) {
-                        double queryDistance = DistanceCalculator.kilometers(
-                                queryLatitude, queryLongitude,
-                                mapPosition[0], mapPosition[1]);
-                        double ownDistance = DistanceCalculator.kilometers(
-                                own.getLatitude(), own.getLongitude(),
-                                mapPosition[0], mapPosition[1]);
-                        if (!Double.isNaN(queryDistance) && queryDistance <= mapCacheRadiusKm) {
-                            allAircraft.put(compactAircraft(plane,
-                                    plane.optString("hex", "unknown").replace("~", ""),
-                                    AircraftData.callsign(plane), ownDistance,
-                                    altitudeFeet(plane.opt("alt_geom"), plane.opt("alt_baro")),
-                                    mapPosition[0], mapPosition[1]));
-                        }
-                    }
                     // Airplanes.live's free-plan interval is 180 seconds. Keep its last
                     // provider position until the next permitted cross-check instead of
                     // flapping a source-only contact in and out every minute.
@@ -612,6 +608,36 @@ public class MonitorService extends Service implements LocationListener {
         } finally {
             if (connection != null) connection.disconnect();
         }
+    }
+
+    private JSONArray compactMapAircraft(JSONArray aircraft, double queryLatitude,
+                                         double queryLongitude, int radiusNm) {
+        JSONArray result = new JSONArray();
+        if (aircraft == null) return result;
+        double radiusKm = radiusNm * NAUTICAL_MILE_KM;
+        Location own = latestLocation;
+        for (int i = 0; i < aircraft.length(); i++) {
+            JSONObject plane = aircraft.optJSONObject(i);
+            double[] position = AircraftData.recentPosition(
+                    plane, MAP_MAX_POSITION_AGE_SECONDS);
+            if (plane == null || position == null) continue;
+            double queryDistance = DistanceCalculator.kilometers(
+                    queryLatitude, queryLongitude, position[0], position[1]);
+            if (Double.isNaN(queryDistance) || queryDistance > radiusKm) continue;
+            double ownDistance = own == null ? Double.NaN : DistanceCalculator.kilometers(
+                    own.getLatitude(), own.getLongitude(), position[0], position[1]);
+            if (Double.isNaN(ownDistance)) ownDistance = queryDistance;
+            try {
+                result.put(compactAircraft(plane,
+                        plane.optString("hex", "unknown").replace("~", ""),
+                        AircraftData.callsign(plane), ownDistance,
+                        altitudeFeet(plane.opt("alt_geom"), plane.opt("alt_baro")),
+                        position[0], position[1]));
+            } catch (Exception ignored) {
+                // One malformed contact must not discard the other aircraft in the viewport.
+            }
+        }
+        return result;
     }
 
     static synchronized JSONArray updateMapAircraftCache(JSONArray freshAircraft, long now) {
