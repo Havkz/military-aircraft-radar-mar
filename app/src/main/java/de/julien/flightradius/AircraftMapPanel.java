@@ -26,7 +26,6 @@ final class AircraftMapPanel extends FrameLayout {
     private boolean ready;
     private boolean pendingRefresh;
     private boolean pageVisible;
-    private boolean trafficPaused;
     private String pendingFocusHex = "";
     private double pendingFocusLatitude = Double.NaN;
     private double pendingFocusLongitude = Double.NaN;
@@ -46,7 +45,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.25 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.26 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
@@ -118,7 +117,7 @@ final class AircraftMapPanel extends FrameLayout {
 
     void setPageVisible(boolean visible) {
         pageVisible = visible;
-        MonitorService.setMapVisible(pageVisible && !trafficPaused);
+        MonitorService.setMapVisible(pageVisible);
     }
 
     void focusAircraft(String hex, double latitude, double longitude) {
@@ -141,22 +140,21 @@ final class AircraftMapPanel extends FrameLayout {
     }
 
     private final class MapBridge {
-        @JavascriptInterface public void setMapTrafficPaused(boolean paused) {
+        @JavascriptInterface public void setMapViewport(
+                double latitude, double longitude, int radiusNm) {
+            if (!MonitorService.setMapViewport(latitude, longitude, radiusNm)) return;
             host.runOnUiThread(() -> {
-                trafficPaused = paused;
-                MonitorService.setMapVisible(pageVisible && !trafficPaused);
-                if (!paused && pageVisible && MonitorService.isRunning()) {
+                if (pageVisible && MonitorService.isRunning()) {
                     host.startService(new Intent(host, MonitorService.class)
                             .setAction(MonitorService.ACTION_VIEWPORT_CHANGED));
                 }
             });
         }
 
-        @JavascriptInterface public void setMapViewport(
-                double latitude, double longitude, int radiusNm) {
-            if (!MonitorService.setMapViewport(latitude, longitude, radiusNm)) return;
+        @JavascriptInterface public void setIsolatedAircraft(String hex) {
+            if (!MonitorService.setMapIsolatedAircraft(hex)) return;
             host.runOnUiThread(() -> {
-                if (pageVisible && !trafficPaused && MonitorService.isRunning()) {
+                if (pageVisible && MonitorService.isRunning()) {
                     host.startService(new Intent(host, MonitorService.class)
                             .setAction(MonitorService.ACTION_VIEWPORT_CHANGED));
                 }
@@ -192,6 +190,7 @@ final class AircraftMapPanel extends FrameLayout {
 
     void destroy() {
         ready = false;
+        MonitorService.setMapIsolatedAircraft("");
         photoExecutor.shutdownNow();
         traceExecutor.shutdownNow();
         webView.stopLoading();

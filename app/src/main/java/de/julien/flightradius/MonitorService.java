@@ -85,6 +85,7 @@ public class MonitorService extends Service implements LocationListener {
     private static volatile double mapCenterLatitude = Double.NaN;
     private static volatile double mapCenterLongitude = Double.NaN;
     private static volatile int mapRadiusNm = 25;
+    private static volatile String isolatedMapHex = "";
     private static volatile long mapViewportChangedAtMs = System.currentTimeMillis();
     private static final Map<String, JSONObject> mapAircraftCache = new LinkedHashMap<>();
     private static final Map<String, Long> mapAircraftCacheTimes = new HashMap<>();
@@ -144,6 +145,17 @@ public class MonitorService extends Service implements LocationListener {
         return changed;
     }
 
+    static synchronized boolean setMapIsolatedAircraft(String rawHex) {
+        String hex = rawHex == null ? "" : rawHex.replace("~", "")
+                .trim().toLowerCase(Locale.US).replaceAll("[^0-9a-f]", "");
+        if (hex.length() != 6) hex = "";
+        if (hex.equals(isolatedMapHex)) return false;
+        isolatedMapHex = hex;
+        mapViewportChangedAtMs = System.currentTimeMillis();
+        clearMapAircraftCache();
+        return true;
+    }
+
     static int boundedViewportRadiusNm(int requestedRadiusNm) {
         return Math.max(1, Math.min(EXPANDED_MAP_RADIUS_NM, requestedRadiusNm));
     }
@@ -175,6 +187,16 @@ public class MonitorService extends Service implements LocationListener {
                 ownLatitude, ownLongitude);
         return !Double.isNaN(offsetKm)
                 && offsetKm + alertRadiusKm <= viewportRadiusNm * NAUTICAL_MILE_KM;
+    }
+
+    static String mapAircraftEndpoint(double latitude, double longitude, int radiusNm,
+                                      String isolatedHex) {
+        if (isolatedHex != null && isolatedHex.matches("[0-9a-fA-F]{6}")) {
+            return "https://api.adsb.lol/v2/hex/" + isolatedHex.toLowerCase(Locale.US);
+        }
+        return String.format(Locale.US,
+                "https://api.adsb.lol/v2/lat/%.5f/lon/%.5f/dist/%d",
+                latitude, longitude, boundedViewportRadiusNm(radiusNm));
     }
 
     private final Runnable pollTask = new Runnable() {
@@ -381,15 +403,17 @@ public class MonitorService extends Service implements LocationListener {
                 && !Double.isNaN(mapCenterLongitude);
         double queryLatitude = viewportAvailable ? mapCenterLatitude : own.getLatitude();
         double queryLongitude = viewportAvailable ? mapCenterLongitude : own.getLongitude();
+        String isolatedHex = expandedMap ? isolatedMapHex : "";
+        boolean isolatedMapQuery = !isolatedHex.isEmpty();
         int radiusNm = viewportAvailable ? mapRadiusNm
                 : requestRadiusNm(radiusKm, false);
         int alertRadiusNm = requestRadiusNm(radiusKm, false);
-        boolean regionalCoversAlertArea = !viewportAvailable || viewportCoversAlertArea(
+        boolean regionalCoversAlertArea = !isolatedMapQuery
+                && (!viewportAvailable || viewportCoversAlertArea(
                 queryLatitude, queryLongitude, radiusNm,
-                own.getLatitude(), own.getLongitude(), radiusKm);
-        String localEndpoint = String.format(Locale.US,
-                "https://api.adsb.lol/v2/lat/%.5f/lon/%.5f/dist/%d",
-                queryLatitude, queryLongitude, radiusNm);
+                own.getLatitude(), own.getLongitude(), radiusKm));
+        String localEndpoint = mapAircraftEndpoint(
+                queryLatitude, queryLongitude, radiusNm, isolatedHex);
 
         if (expandedMap) mapLoading = true;
         try {
@@ -497,8 +521,11 @@ public class MonitorService extends Service implements LocationListener {
                     taggedCopy(cachedAdsbExchange, "ADS-B Exchange",
                             ageSeconds(now, lastAdsbExchangeFetchMs)));
             JSONArray liveAircraft = new JSONArray();
+            JSONArray mapAircraftSource = isolatedMapQuery
+                    ? taggedCopy(cachedAdsbLolRegional, "ADSB.lol", ageSeconds(
+                    now, lastAdsbLolRegionalFetchMs)) : aircraft;
             JSONArray allAircraft = compactMapAircraft(
-                    aircraft, queryLatitude, queryLongitude, radiusNm);
+                    mapAircraftSource, queryLatitude, queryLongitude, radiusNm);
             Set<String> currentlyInside = new HashSet<>();
             long scanTime = System.currentTimeMillis();
             int alertTargetCount = 0;
