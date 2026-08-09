@@ -21,10 +21,18 @@ The vector path data is embedded locally so the app does not contact Google or l
 ## Airplanes.live aircraft data
 
 Android retrieves nearby-aircraft data from the documented Airplanes.live API under its published API conditions and rate limits.
+The selected-aircraft information panel can also analyze publicly available, day-based Airplanes.live Globe trace files to infer frequent landing airports. Results are cached locally for 24 hours.
 
 - API guide: https://airplanes.live/api-guide/
 - Terms of Use: https://airplanes.live/terms-of-use/
 - Privacy: https://airplanes.live/privacy/
+
+## OurAirports airport data
+
+MAR includes a compact airport directory derived from the OurAirports open data set. OurAirports publishes this data in the public domain. The directory is used locally to associate an inferred landing position with a nearby airport and city.
+
+- Data: https://ourairports.com/data/
+- Data dictionary: https://ourairports.com/help/data-dictionary.html
 
 ## Leaflet and OpenStreetMap
 

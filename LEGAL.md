@@ -70,6 +70,13 @@ Planespotters.net and planespotting.be are optional external destinations opened
 
 MAR's map controls, filters, tracks, bookmarks, measurement tools, and information panels are original project code implemented with Leaflet. Reference screenshots used during development are not part of the source tree, application package, commits, or releases. No Airplanes.live Globe source code, imagery, icons, map tiles, or website assets are included or copied.
 
+## Inferred frequent destinations
+
+For a selected aircraft, MAR can inspect a 30-day window of publicly available Airplanes.live Globe trace files and detect transitions from airborne to ground. Landing coordinates are associated locally with nearby airports from the public-domain OurAirports data set. The displayed cities, airport matches, and counts are estimates, not an official timetable or a complete all-time history. Missing trace days, incomplete reception, touch-and-go landings, and nearby airports can make the result incomplete or incorrect.
+
+- OurAirports data: https://ourairports.com/data/
+- OurAirports data dictionary: https://ourairports.com/help/data-dictionary.html
+
 ## Trademarks and independence
 
 ADSB.lol, Airplanes.live, Flightradar24, ADS-B Exchange, OpenStreetMap, Leaflet, Planespotters.net, Planespotting.be, Apple, Android, Google, and all other product or service names are the property of their respective owners. Their appearance in MAR is descriptive and does not imply affiliation or endorsement.

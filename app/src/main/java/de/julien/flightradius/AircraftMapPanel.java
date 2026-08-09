@@ -23,6 +23,7 @@ final class AircraftMapPanel extends FrameLayout {
     private final WebView webView;
     private final ExecutorService photoExecutor = Executors.newFixedThreadPool(2);
     private final ExecutorService traceExecutor = Executors.newFixedThreadPool(2);
+    private final ExecutorService destinationExecutor = Executors.newSingleThreadExecutor();
     private boolean ready;
     private boolean pendingRefresh;
     private boolean pageVisible;
@@ -45,7 +46,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.26 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.27 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
@@ -186,6 +187,19 @@ final class AircraftMapPanel extends FrameLayout {
                 });
             });
         }
+
+        @JavascriptInterface public void requestFrequentDestinations(String hex) {
+            destinationExecutor.submit(() -> {
+                JSONObject result = AircraftFrequentDestinationsLookup.find(host, hex);
+                String script = "window.marFrequentDestinationsResult"
+                        + "&&window.marFrequentDestinationsResult("
+                        + JSONObject.quote(hex == null ? "" : hex) + ","
+                        + result.toString() + ")";
+                host.runOnUiThread(() -> {
+                    if (ready) webView.evaluateJavascript(script, null);
+                });
+            });
+        }
     }
 
     void destroy() {
@@ -193,6 +207,7 @@ final class AircraftMapPanel extends FrameLayout {
         MonitorService.setMapIsolatedAircraft("");
         photoExecutor.shutdownNow();
         traceExecutor.shutdownNow();
+        destinationExecutor.shutdownNow();
         webView.stopLoading();
         webView.destroy();
     }
