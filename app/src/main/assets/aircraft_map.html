@@ -123,7 +123,7 @@
   function selectAircraft(hex){if(!flags.multiple||flags.isolate)selected.clear();selected.has(hex)&&flags.multiple&&!flags.isolate?selected.delete(hex):selected.add(hex);syncIsolationQuery();if(selected.has(hex))requestOnlineTrace(hex);render();showInfo(hex);followSelected()}
   function closeInfo(){document.getElementById('info').classList.remove('open');selected.clear();syncIsolationQuery();render()}
   function applyPendingFocus(){if(!pendingFocus)return;const hex=norm(pendingFocus.hex).replace(/^~/,''),a=aircraft.find(x=>norm(x.hex).replace(/^~/,'')===hex)||known.get(hex);if(!a)return;if(finite(a.lat)&&finite(a.lon))map.setView([a.lat,a.lon],Math.max(map.getZoom(),10));selected.clear();selected.add(a.hex);syncIsolationQuery();pendingFocus=null;render();showInfo(a.hex)}
-  window.marFocusAircraft=function(hex,lat,lon){pendingFocus={hex:String(hex||''),lat,lon};if(finite(lat)&&finite(lon))map.setView([lat,lon],Math.max(map.getZoom(),10));applyPendingFocus()};
+  window.marFocusAircraft=function(hex,lat,lon){const key=norm(hex).replace(/^~/,'');pendingFocus={hex:key,lat,lon};if(/^[0-9a-f]{6}$/.test(key)&&window.MarNative&&MarNative.setIsolatedAircraft)MarNative.setIsolatedAircraft(key);if(finite(lat)&&finite(lon))map.setView([lat,lon],Math.max(map.getZoom(),10));applyPendingFocus()};
   function followSelected(){if(!flags.follow||!selected.size)return;const a=aircraft.find(x=>selected.has(x.hex));if(a)map.panTo([a.lat,a.lon])}
   function infoPair(label,value){return'<span class="info-key">'+esc(label)+'</span><span class="info-value">'+esc(value==null||value===''?'—':value)+'</span>'}
   function infoSection(title,content){return'<section class="info-section"><h4>'+esc(title)+'</h4><div class="info-grid">'+content+'</div></section>'}

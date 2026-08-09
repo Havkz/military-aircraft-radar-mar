@@ -3,6 +3,7 @@
 ## ADSB.lol aircraft data
 
 MAR contains information from ADSB.lol, which is made available under the Open Database License (ODbL) 1.0.
+Optional worldwide squawk notifications use ADSB.lol's documented global squawk endpoint.
 
 - Database and API: https://www.adsb.lol/docs/open-data/api/
 - License: https://opendatacommons.org/licenses/odbl/1-0/
@@ -22,6 +23,7 @@ The vector path data is embedded locally so the app does not contact Google or l
 
 Android retrieves nearby-aircraft data from the documented Airplanes.live API under its published API conditions and rate limits.
 The selected-aircraft information panel can also analyze publicly available, day-based Airplanes.live Globe trace files to infer frequent landing airports. Results are cached locally for 24 hours.
+Optional worldwide squawk notifications use the documented squawk endpoint. The three-code emergency preset requires one Airplanes.live request per code; Free-plan scheduling shares the published daily allowance with map requests.
 
 - API guide: https://airplanes.live/api-guide/
 - Terms of Use: https://airplanes.live/terms-of-use/

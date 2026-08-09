@@ -20,8 +20,6 @@ import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 
-import java.util.List;
-
 final class SettingsPanel extends ScrollView {
     private final Activity host;
     private final SharedPreferences prefs;
@@ -176,10 +174,13 @@ final class SettingsPanel extends ScrollView {
         LinearLayout row = settingRow(MapL10n.t(host, "custom_alerts"));
         TextView value = (TextView) row.getChildAt(1);
         Runnable refresh = () -> {
-            List<CustomAlertRules.Rule> rules = CustomAlertRules.load(host);
-            int enabled = 0;
-            for (CustomAlertRules.Rule rule : rules) if (rule.enabled) enabled++;
-            value.setText(enabled + " / " + rules.size() + "  ›");
+            String mode = CustomAlertRules.mode(host);
+            String label = CustomAlertRules.MODE_EMERGENCY.equals(mode)
+                    ? "7500 / 7600 / 7700"
+                    : CustomAlertRules.MODE_CUSTOM.equals(mode)
+                    ? "Squawk " + CustomAlertRules.customSquawk(host)
+                    : MapL10n.t(host, "disabled");
+            value.setText(label + "  ›");
         };
         refresh.run();
         row.setOnClickListener(view -> showAlertRules(refresh));
@@ -187,100 +188,47 @@ final class SettingsPanel extends ScrollView {
     }
 
     private void showAlertRules(Runnable refresh) {
-        List<CustomAlertRules.Rule> rules = CustomAlertRules.load(host);
-        String[] entries = new String[rules.size() + 1];
-        entries[0] = "+  " + MapL10n.t(host, "add_rule");
-        for (int i = 0; i < rules.size(); i++) {
-            CustomAlertRules.Rule rule = rules.get(i);
-            entries[i + 1] = (rule.enabled ? "●  " : "○  ")
-                    + ruleSummary(rule);
-        }
+        String mode = CustomAlertRules.mode(host);
+        int interval = CustomAlertRules.intervalMinutes(host);
+        boolean business = prefs.getBoolean(
+                AppPreferences.KEY_AIRPLANES_BUSINESS_RATE, false);
+        int freeAirplanesMinutes = (int) (CustomAlertRules.airplanesIntervalMs(
+                interval, business, CustomAlertRules.selectedSquawks(host).size()) / 60_000L);
+        String[] entries = {
+                (CustomAlertRules.MODE_OFF.equals(mode) ? "●  " : "○  ")
+                        + MapL10n.t(host, "disabled"),
+                (CustomAlertRules.MODE_EMERGENCY.equals(mode) ? "●  " : "○  ")
+                        + MapL10n.t(host, "emergency_squawks"),
+                (CustomAlertRules.MODE_CUSTOM.equals(mode) ? "●  " : "○  ")
+                        + MapL10n.t(host, "custom_squawk") + " · "
+                        + CustomAlertRules.customSquawk(host),
+                "◷  " + MapL10n.t(host, "check_interval") + " · "
+                        + interval + (interval == 1 ? " minute" : " minutes")
+                        + (business ? "" : " · Airplanes.live Free: "
+                        + freeAirplanesMinutes + " min")};
         showDropdown(MapL10n.t(host, "custom_alerts"), entries, -1, which -> {
-                    if (which == 0) chooseNewAlertType(refresh);
-                    else showRuleActions(rules, which - 1, refresh);
-                });
-    }
-
-    private void chooseNewAlertType(Runnable refresh) {
-        String[] labels = {
-                "Squawk 7700", "Squawk 7600", "Squawk 7500",
-                MapL10n.t(host, "custom_squawk"),
-                MapL10n.t(host, "low_level"),
-                MapL10n.t(host, "altitude_below"),
-                MapL10n.t(host, "speed_below"),
-                MapL10n.t(host, "speed_above")};
-        showDropdown(MapL10n.t(host, "rule_type"), labels, -1, which -> {
-                    CustomAlertRules.Rule rule = new CustomAlertRules.Rule();
-                    if (which <= 3) {
-                        rule.type = CustomAlertRules.SQUAWK;
-                        rule.squawk = which == 0 ? "7700" : which == 1 ? "7600"
-                                : which == 2 ? "7500" : "";
-                    } else {
-                        String[] types = {CustomAlertRules.LOW_LEVEL,
-                                CustomAlertRules.ALTITUDE_BELOW,
-                                CustomAlertRules.SPEED_BELOW,
-                                CustomAlertRules.SPEED_ABOVE};
-                        rule.type = types[which - 4];
-                        rule.durationSeconds = CustomAlertRules.LOW_LEVEL.equals(rule.type)
-                                ? 120 : 0;
-                    }
-                    editAlertRule(rule, -1, refresh);
-                });
-    }
-
-    private void showRuleActions(List<CustomAlertRules.Rule> rules, int index,
-                                 Runnable refresh) {
-        CustomAlertRules.Rule rule = rules.get(index);
-        String[] actions = {rule.enabled ? MapL10n.t(host, "disable")
-                : MapL10n.t(host, "enable"), MapL10n.t(host, "edit"),
-                MapL10n.t(host, "delete")};
-        showDropdown(ruleSummary(rule), actions, -1, which -> {
                     if (which == 0) {
-                        rule.enabled = !rule.enabled;
-                        saveAlertRules(rules, refresh);
-                    } else if (which == 1) editAlertRule(rule, index, refresh);
-                    else {
-                        rules.remove(index);
-                        saveAlertRules(rules, refresh);
-                    }
+                        CustomAlertRules.setMode(host, CustomAlertRules.MODE_OFF);
+                        saveSquawkAlertSettings(refresh);
+                    } else if (which == 1) {
+                        CustomAlertRules.setMode(host, CustomAlertRules.MODE_EMERGENCY);
+                        saveSquawkAlertSettings(refresh);
+                    } else if (which == 2) {
+                        editCustomSquawk(refresh);
+                    } else chooseSquawkInterval(refresh);
                 });
     }
 
-    private void editAlertRule(CustomAlertRules.Rule rule, int index, Runnable refresh) {
+    private void editCustomSquawk(Runnable refresh) {
         LinearLayout form = new LinearLayout(host);
         form.setOrientation(LinearLayout.VERTICAL);
         int pad = dp(20);
         form.setPadding(pad, dp(4), pad, 0);
-        EditText name = ruleField(form, MapL10n.t(host, "rule_name"), rule.name, false);
-        EditText primary;
-        EditText vertical = null;
-        boolean metric = AppPreferences.usesMetric(host);
-        boolean speedRule = CustomAlertRules.SPEED_BELOW.equals(rule.type)
-                || CustomAlertRules.SPEED_ABOVE.equals(rule.type);
-        if (CustomAlertRules.SQUAWK.equals(rule.type)) {
-            primary = ruleField(form, MapL10n.t(host, "squawk_code"), rule.squawk, false);
-        } else {
-            String label = speedRule ? MapL10n.t(host, "speed")
-                    + (metric ? " (km/h)" : " (kt)")
-                    : MapL10n.t(host, "altitude_details")
-                    + (metric ? " (m)" : " (ft)");
-            double shownThreshold = metric
-                    ? rule.threshold * (speedRule ? 1.852d : .3048d) : rule.threshold;
-            primary = ruleField(form, label,
-                    String.valueOf(Math.round(shownThreshold)), true);
-            if (CustomAlertRules.LOW_LEVEL.equals(rule.type)) {
-                vertical = ruleField(form, MapL10n.t(host, "vertical_rate")
-                                + (metric ? " (m/s)" : " (ft/min)"),
-                        metric ? String.format(java.util.Locale.US, "%.1f",
-                                rule.verticalRate * .00508d)
-                                : String.valueOf(Math.round(rule.verticalRate)), true);
-            }
-        }
-        EditText duration = ruleField(form, MapL10n.t(host, "duration_seconds"),
-                String.valueOf(rule.durationSeconds), true);
-        final EditText verticalField = vertical;
+        EditText code = ruleField(form, MapL10n.t(host, "squawk_code"),
+                CustomAlertRules.customSquawk(host), true);
+        code.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(4)});
         Dialog alert = new Dialog(host);
-        LinearLayout panel = modalPanel(MapL10n.t(host, "edit_rule"));
+        LinearLayout panel = modalPanel(MapL10n.t(host, "custom_squawk"));
         panel.addView(form, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout actions = new LinearLayout(host);
         actions.setGravity(Gravity.END);
@@ -296,28 +244,10 @@ final class SettingsPanel extends ScrollView {
         cancel.setOnClickListener(button -> dismissAnimated(alert, panel));
         save.setOnClickListener(button -> {
                     try {
-                        rule.name = name.getText().toString().trim();
-                        if (CustomAlertRules.SQUAWK.equals(rule.type)) {
-                            rule.squawk = primary.getText().toString().trim();
-                            if (!CustomAlertRules.validSquawk(rule.squawk)) throw new Exception();
-                        } else {
-                            double entered = Double.parseDouble(primary.getText().toString());
-                            rule.threshold = metric
-                                    ? entered / (speedRule ? 1.852d : .3048d) : entered;
-                            if (rule.threshold < 0) throw new Exception();
-                            if (verticalField != null) {
-                                rule.verticalRate = Double.parseDouble(
-                                        verticalField.getText().toString());
-                                if (metric) rule.verticalRate /= .00508d;
-                                if (rule.verticalRate < 0) throw new Exception();
-                            }
-                        }
-                        rule.durationSeconds = Math.max(0,
-                                Integer.parseInt(duration.getText().toString()));
-                        List<CustomAlertRules.Rule> rules = CustomAlertRules.load(host);
-                        if (index < 0) rules.add(rule);
-                        else if (index < rules.size()) rules.set(index, rule);
-                        saveAlertRules(rules, refresh);
+                        String value = code.getText().toString().trim();
+                        CustomAlertRules.setCustomSquawk(host, value);
+                        CustomAlertRules.setMode(host, CustomAlertRules.MODE_CUSTOM);
+                        saveSquawkAlertSettings(refresh);
                         dismissAnimated(alert, panel);
                     } catch (Exception error) {
                         android.widget.Toast.makeText(host,
@@ -328,21 +258,14 @@ final class SettingsPanel extends ScrollView {
         showModal(alert, panel);
     }
 
-    private String ruleSummary(CustomAlertRules.Rule rule) {
-        if (!rule.name.trim().isEmpty()) return rule.name.trim();
-        if (CustomAlertRules.SQUAWK.equals(rule.type)) return "Squawk " + rule.squawk;
-        boolean speedRule = CustomAlertRules.SPEED_BELOW.equals(rule.type)
-                || CustomAlertRules.SPEED_ABOVE.equals(rule.type);
-        String key = CustomAlertRules.LOW_LEVEL.equals(rule.type) ? "low_level"
-                : CustomAlertRules.ALTITUDE_BELOW.equals(rule.type) ? "altitude_below"
-                : CustomAlertRules.SPEED_BELOW.equals(rule.type) ? "speed_below"
-                : "speed_above";
-        String value;
-        if (speedRule) value = AppPreferences.usesMetric(host)
-                ? Math.round(rule.threshold * 1.852d) + " km/h"
-                : Math.round(rule.threshold) + " kt";
-        else value = AppPreferences.altitude(host, rule.threshold);
-        return MapL10n.t(host, key) + " · " + value;
+    private void chooseSquawkInterval(Runnable refresh) {
+        int current = CustomAlertRules.intervalMinutes(host);
+        String[] entries = {"1 minute", "5 minutes"};
+        showDropdown(MapL10n.t(host, "check_interval"), entries,
+                current == 1 ? 0 : 1, which -> {
+                    CustomAlertRules.setIntervalMinutes(host, which == 0 ? 1 : 5);
+                    saveSquawkAlertSettings(refresh);
+                });
     }
 
     private EditText ruleField(LinearLayout form, String hint, String value,
@@ -367,8 +290,12 @@ final class SettingsPanel extends ScrollView {
         return input;
     }
 
-    private void saveAlertRules(List<CustomAlertRules.Rule> rules, Runnable refresh) {
-        CustomAlertRules.save(host, rules);
+    private void saveSquawkAlertSettings(Runnable refresh) {
+        prefs.edit()
+                .remove(AppPreferences.KEY_SQUAWK_ADSB_LOL_LAST_ATTEMPT_MS)
+                .remove(AppPreferences.KEY_SQUAWK_AIRPLANES_LAST_ATTEMPT_MS)
+                .remove(AppPreferences.KEY_SQUAWK_ADSBX_LAST_ATTEMPT_MS)
+                .apply();
         refresh.run();
         if (prefs.getBoolean(AppPreferences.KEY_RUNNING, false)) {
             host.startService(new Intent(host, MonitorService.class)

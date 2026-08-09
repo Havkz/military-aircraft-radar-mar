@@ -14,6 +14,15 @@ final class AppPreferences {
     static final String KEY_REFRESH_SECONDS = "refresh_seconds";
     static final String KEY_VIBRATION = "vibration";
     static final String KEY_ALERT_RULES = "custom_alert_rules";
+    static final String KEY_SQUAWK_ALERT_MODE = "squawk_alert_mode";
+    static final String KEY_SQUAWK_CUSTOM_CODE = "squawk_custom_code";
+    static final String KEY_SQUAWK_ALERT_INTERVAL_MINUTES = "squawk_alert_interval_minutes";
+    static final String KEY_SQUAWK_ADSB_LOL_LAST_ATTEMPT_MS =
+            "squawk_adsb_lol_last_attempt_ms";
+    static final String KEY_SQUAWK_AIRPLANES_LAST_ATTEMPT_MS =
+            "squawk_airplanes_last_attempt_ms";
+    static final String KEY_SQUAWK_ADSBX_LAST_ATTEMPT_MS =
+            "squawk_adsbx_last_attempt_ms";
     // Kept only for migrating the legacy detail screen; no longer exposed in settings.
     static final String KEY_TRACKER = "tracker";
     static final String KEY_RUNNING = "service_running";

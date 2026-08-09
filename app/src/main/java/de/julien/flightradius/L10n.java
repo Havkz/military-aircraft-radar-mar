@@ -78,7 +78,7 @@ final class L10n {
             case "background_service": return "MAR background service";
             case "background_description": return "Silent Android indicator required for monitoring";
             case "alert_channel": return "Military aircraft detected";
-            case "alert_description": return "Live alerts for new military aircraft in range";
+            case "alert_description": return "Military, rotorcraft, and worldwide squawk alerts";
             case "monitoring_running": return "Monitoring is running";
             case "stop_radar": return "STOP RADAR";
             case "restart_reminders": return "Restart reminders";

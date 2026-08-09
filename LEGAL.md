@@ -10,6 +10,8 @@ ADSB.lol is MAR's aircraft-data provider. Its official API documentation states 
 
 MAR uses ADSB.lol's nearby-aircraft and military endpoints, merges the responses on the device, and does not operate or publish a separate aircraft-data service.
 
+When worldwide squawk notifications are enabled, MAR also uses ADSB.lol's documented global squawk endpoint at the user-selected one- or five-minute interval.
+
 MAR treats the aircraft information shown in the app as output produced from the ADSB.lol database and includes the following attribution in the application and project documentation:
 
 > Contains information from ADSB.lol, which is made available under the Open Database License (ODbL) 1.0.
@@ -34,6 +36,8 @@ Any future use of Flightradar24 content or automated access would require a new 
 
 Android requests Airplanes.live's documented nearby-aircraft API directly. The free plan is limited to 500 requests per day and is described as non-commercial with no service-level agreement. MAR therefore defaults this source to one request every 180 seconds. A separate 1.2-second Business-rate option is disabled by default, carries an explicit warning, and is intended only for users whose account or IP Airplanes.live has authorized for that rate. The request area expands to the documented 250 NM endpoint maximum only while the map tab is visible; this does not change notification eligibility. Data is merged and deduplicated locally and is not republished as a separate database.
 
+Airplanes.live also documents a global squawk endpoint. It accepts one squawk value per request, so MAR sends separate requests for the three-code emergency preset. On the Free plan, nearby and squawk polling are spaced to remain within the shared 500-request daily allowance; consequently, Airplanes.live may check later than the selected one- or five-minute interval. The authorized Business-rate option follows the selected interval.
+
 - API guide: https://airplanes.live/api-guide/
 - API plans: https://airplanes.live/api/
 - Terms of Use: https://airplanes.live/terms-of-use/
@@ -42,6 +46,8 @@ Android requests Airplanes.live's documented nearby-aircraft API directly. The f
 ## ADS-B Exchange
 
 MAR never scrapes ADS-B Exchange. Android can query its official API only after the user supplies their own valid API key; otherwise ADS-B Exchange is used solely as an outbound aircraft-page destination. Responses are cached briefly on-device for the live map and alerts and are not published as a separate database.
+
+With a configured official key, worldwide squawk notifications use ADS-B Exchange's documented `sqk` endpoint at the selected interval.
 
 The full plain-text name “ADS-B Exchange” is used only to identify the optional external destination. MAR does not use the ADS-B Exchange logo and does not claim affiliation, partnership, sponsorship, or endorsement.
 

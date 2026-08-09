@@ -88,9 +88,9 @@ public class MonitorService extends Service implements LocationListener {
 
     private static final long NOTIFICATION_ENTRY_GRACE_MS = 2 * 60_000L;
     private final Map<String, Long> notifiedInsideLastSeen = new HashMap<>();
+    private final Map<String, Long> activeGlobalSquawks = new HashMap<>();
     private final Map<String, JSONObject> sessionHistory = new LinkedHashMap<>();
     private final Map<String, Double> geoidOffsetFeet = new HashMap<>();
-    private final Map<String, Long> customConditionSince = new ConcurrentHashMap<>();
     private final Set<Integer> aircraftNotificationIds = Collections.newSetFromMap(
             new ConcurrentHashMap<Integer, Boolean>());
     private HandlerThread workerThread;
@@ -383,6 +383,7 @@ public class MonitorService extends Service implements LocationListener {
     }
 
     private void pollAircraft() {
+        pollGlobalSquawkAlerts(System.currentTimeMillis());
         Location own = latestLocation;
         int radiusKm = AppPreferences.get(this)
                 .getInt(AppPreferences.KEY_RADIUS_KM, AppPreferences.DEFAULT_RADIUS_KM);
@@ -523,7 +524,6 @@ public class MonitorService extends Service implements LocationListener {
             Set<String> currentlyInside = new HashSet<>();
             long scanTime = System.currentTimeMillis();
             int alertTargetCount = 0;
-            List<CustomAlertRules.Rule> customRules = CustomAlertRules.load(this);
             String nearestCallsign = "";
             double nearestDistanceKm = Double.NaN;
             double nearestAltitudeFt = Double.NaN;
@@ -546,16 +546,13 @@ public class MonitorService extends Service implements LocationListener {
                     String callsign = AircraftData.callsign(plane);
                     double altitudeFt = altitudeFeet(
                             plane.opt("alt_geom"), plane.opt("alt_baro"));
-                    String customReason = CustomAlertRules.evaluate(customRules, plane, hex,
-                            altitudeFt, scanTime, customConditionSince);
                     boolean builtInTarget = isAlertTarget(plane);
-                    if (!builtInTarget && customReason.isEmpty()) continue;
+                    if (!builtInTarget) continue;
                     alertTargetCount++;
                     currentlyInside.add(hex);
                     JSONObject compact = compactAircraft(plane, hex, callsign,
                             distanceKm, altitudeFt, aircraftLat, aircraftLon);
-                    if (!customReason.isEmpty()) compact.put("alert_reason", customReason);
-                    else if (MilitaryClassifier.isMilitary(plane)
+                    if (MilitaryClassifier.isMilitary(plane)
                             && AircraftData.isRotorcraft(plane)) {
                         compact.put("alert_reason", MapL10n.t(this, "military") + " · "
                                 + MapL10n.t(this, "rotorcraft"));
@@ -783,8 +780,162 @@ public class MonitorService extends Service implements LocationListener {
     private long nextAirplanesDelayMs() {
         boolean businessRate = AppPreferences.get(this).getBoolean(
                 AppPreferences.KEY_AIRPLANES_BUSINESS_RATE, false);
+        long base = airplanesBaseRefreshMs(businessRate);
+        if (!businessRate && !CustomAlertRules.querySquawks(this).isEmpty()) {
+            base = Math.max(base, 6 * 60_000L);
+        }
         return airplanesBackoff.delayMs(
-                airplanesBaseRefreshMs(businessRate), System.currentTimeMillis());
+                base, System.currentTimeMillis());
+    }
+
+    private void pollGlobalSquawkAlerts(long now) {
+        String squawks = CustomAlertRules.querySquawks(this);
+        if (squawks.isEmpty() || networkPool == null) return;
+        int intervalMinutes = CustomAlertRules.intervalMinutes(this);
+        long requestedInterval = CustomAlertRules.requestedIntervalMs(intervalMinutes);
+        Set<String> selectedSquawks = CustomAlertRules.selectedSquawks(this);
+        boolean businessRate = AppPreferences.get(this).getBoolean(
+                AppPreferences.KEY_AIRPLANES_BUSINESS_RATE, false);
+        long airplanesInterval = CustomAlertRules.airplanesIntervalMs(
+                intervalMinutes, businessRate, selectedSquawks.size());
+        android.content.SharedPreferences preferences = AppPreferences.get(this);
+        List<Future<JSONArray>> futures = new ArrayList<>();
+        android.content.SharedPreferences.Editor attempts = preferences.edit();
+        long adsbLolLast = preferences.getLong(
+                AppPreferences.KEY_SQUAWK_ADSB_LOL_LAST_ATTEMPT_MS, 0L);
+        if (providerDue(adsbLolLast, requestedInterval, now)) {
+            attempts.putLong(AppPreferences.KEY_SQUAWK_ADSB_LOL_LAST_ATTEMPT_MS, now);
+            futures.add(networkPool.submit(() -> fetchAircraft(
+                    globalSquawkEndpoint("adsb.lol", squawks),
+                    null, "adsb.lol")));
+        }
+        long airplanesLast = preferences.getLong(
+                AppPreferences.KEY_SQUAWK_AIRPLANES_LAST_ATTEMPT_MS, 0L);
+        if (providerDue(airplanesLast, airplanesInterval, now)) {
+            attempts.putLong(AppPreferences.KEY_SQUAWK_AIRPLANES_LAST_ATTEMPT_MS, now);
+            for (String code : selectedSquawks) {
+                futures.add(networkPool.submit(() -> fetchAircraft(
+                        globalSquawkEndpoint("airplanes.live", code),
+                        null, "airplanes.live")));
+            }
+        }
+        String adsbxKey = ProviderCredentials.adsbExchangeKey(this);
+        long adsbxLast = preferences.getLong(
+                AppPreferences.KEY_SQUAWK_ADSBX_LAST_ATTEMPT_MS, 0L);
+        if (!adsbxKey.isEmpty() && providerDue(adsbxLast, requestedInterval, now)) {
+            attempts.putLong(AppPreferences.KEY_SQUAWK_ADSBX_LAST_ATTEMPT_MS, now);
+            futures.add(networkPool.submit(() -> fetchAircraft(
+                    globalSquawkEndpoint("adsbexchange", squawks),
+                    adsbxKey, "adsbexchange")));
+        }
+        if (futures.isEmpty()) return;
+        attempts.apply();
+        List<JSONArray> received = new ArrayList<>();
+        for (Future<JSONArray> future : futures) {
+            JSONArray result = awaitOptional(future);
+            if (result != null) received.add(result);
+        }
+        if (received.isEmpty()) return;
+        try {
+            JSONArray merged = AircraftData.mergeByHex(
+                    received.toArray(new JSONArray[0]));
+            processGlobalSquawkAircraft(merged, selectedSquawks, now,
+                    Math.max(requestedInterval, airplanesInterval));
+        } catch (Exception ignored) { }
+    }
+
+    static boolean providerDue(long lastAttempt, long interval, long now) {
+        return lastAttempt <= 0L || now - lastAttempt >= interval;
+    }
+
+    static String globalSquawkEndpoint(String provider, String squawks) {
+        if ("airplanes.live".equals(provider)) {
+            return "https://api.airplanes.live/v2/squawk/" + squawks;
+        }
+        if ("adsbexchange".equals(provider)) {
+            return "https://gateway.adsbexchange.com/api/aircraft/v2/sqk/" + squawks;
+        }
+        return "https://api.adsb.lol/v2/squawk/" + squawks;
+    }
+
+    private void processGlobalSquawkAircraft(JSONArray aircraft, Set<String> selected,
+                                             long now, long requestedInterval) {
+        long expiry = Math.max(2 * requestedInterval, 2 * 60_000L);
+        List<String> expired = new ArrayList<>();
+        for (Map.Entry<String, Long> entry : activeGlobalSquawks.entrySet()) {
+            if (now - entry.getValue() >= expiry) expired.add(entry.getKey());
+        }
+        for (String key : expired) activeGlobalSquawks.remove(key);
+        JSONArray mapItems = new JSONArray();
+        for (int i = 0; i < aircraft.length(); i++) {
+            JSONObject plane = aircraft.optJSONObject(i);
+            if (plane == null) continue;
+            String squawk = plane.optString("squawk", "").trim();
+            if (!selected.contains(squawk)) continue;
+            String hex = plane.optString("hex", "").replace("~", "")
+                    .trim().toLowerCase(Locale.US);
+            if (hex.isEmpty()) continue;
+            String eventKey = squawk + ':' + hex;
+            boolean newEvent = !activeGlobalSquawks.containsKey(eventKey);
+            activeGlobalSquawks.put(eventKey, now);
+            double[] position = AircraftData.recentPosition(
+                    plane, MAP_MAX_POSITION_AGE_SECONDS);
+            double latitude = position == null ? Double.NaN : position[0];
+            double longitude = position == null ? Double.NaN : position[1];
+            if (position != null) {
+                try {
+                    mapItems.put(compactAircraft(plane, hex, AircraftData.callsign(plane),
+                            Double.NaN, altitudeFeet(plane.opt("alt_geom"),
+                                    plane.opt("alt_baro")), latitude, longitude));
+                } catch (Exception ignored) { }
+            }
+            if (newEvent) showGlobalSquawkNotification(
+                    plane, hex, squawk, latitude, longitude);
+        }
+        if (mapItems.length() > 0) updateMapAircraftCache(mapItems, now);
+    }
+
+    private void showGlobalSquawkNotification(JSONObject aircraft, String hex,
+                                               String squawk, double latitude,
+                                               double longitude) {
+        if (!running || !AppPreferences.get(this)
+                .getBoolean(AppPreferences.KEY_RUNNING, false)) return;
+        String callsign = AircraftData.displayName(aircraft);
+        String details = globalSquawkNotificationDetails(aircraft);
+        Intent openMap = new Intent(this, MainActivity.class)
+                .setData(android.net.Uri.parse("mar://aircraft/"
+                        + android.net.Uri.encode(hex)))
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra("open_map", true).putExtra("callsign", callsign)
+                .putExtra("hex", hex).putExtra("lat", latitude).putExtra("lon", longitude);
+        int notificationId = ("global-squawk:" + squawk + ':' + hex).hashCode();
+        PendingIntent tracker = PendingIntent.getActivity(this,
+                notificationId ^ 0x5351574b, openMap,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        Notification notification = new Notification.Builder(this, CHANNEL_ALERTS)
+                .setSmallIcon(R.drawable.ic_notification_radar)
+                .setLargeIcon(radarBitmap(true))
+                .setContentTitle("Aircraft squawked " + squawk)
+                .setContentText(details)
+                .setStyle(new Notification.BigTextStyle().bigText(details))
+                .setColor(MARColors.RED)
+                .setCategory(Notification.CATEGORY_ALARM)
+                .setContentIntent(tracker)
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .build();
+        aircraftNotificationIds.add(notificationId);
+        getSystemService(NotificationManager.class).notify(notificationId, notification);
+    }
+
+    static String globalSquawkNotificationDetails(JSONObject aircraft) {
+        String callsign = AircraftData.displayName(aircraft);
+        String operator = aircraft.optString("ownOp",
+                aircraft.optString("operator", "")).trim();
+        if (operator.isEmpty()) operator = aircraft.optString("r",
+                aircraft.optString("registration", "")).trim();
+        if (operator.isEmpty() || operator.equalsIgnoreCase(callsign)) return callsign;
+        return callsign + "  •  " + operator;
     }
 
     private JSONArray awaitOptional(Future<JSONArray> future) {
