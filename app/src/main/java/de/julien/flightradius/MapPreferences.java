@@ -8,8 +8,6 @@ import org.json.JSONObject;
 final class MapPreferences {
     static final String TEXT_SCALE = "map_text_scale";
     static final String ICON_SCALE = "map_icon_scale";
-    static final String DARK = "map_dark";
-    static final String DARKER = "map_darker";
     static final String DIM = "map_dim";
     static final String COLORED_PLANES = "map_colored_planes";
     static final String COLORED_TRAILS = "map_colored_trails";
@@ -22,14 +20,8 @@ final class MapPreferences {
     static final String QNH_CORRECTION = "map_qnh_correction";
     static final String TRACK_UTC = "map_track_utc";
     static final String HISTORIC_TRACK_UTC = "map_historic_track_utc";
-    static final String LAST_LEG_ONLY = "map_last_leg_only";
     static final String ALTITUDE_CHART = "map_altitude_chart";
-    static final String INFOBLOCK = "map_infoblock";
-    static final String WIDE_INFOBLOCK = "map_wide_infoblock";
-    static final String HOVER_INFOBLOCK = "map_hover_infoblock";
     static final String AUTO_SELECT = "map_auto_select";
-    static final String PICTURES_PLANESPOTTERS = "map_pictures_planespotters";
-    static final String PICTURES_PLANESPOTTING = "map_pictures_planespotting";
     static final String GROUND_VEHICLES = "map_ground_vehicles";
     static final String NON_ICAO = "map_non_icao";
     static final String UPDATE_GPS = "map_update_gps";
@@ -39,13 +31,13 @@ final class MapPreferences {
     static final String DEBUG_SHOW_ALL = "map_debug_show_all";
 
     private static final String[] KEYS = {
-            TEXT_SCALE, ICON_SCALE, DARK, DARKER, DIM, COLORED_PLANES,
+            TEXT_SCALE, ICON_SCALE, "map_dark", "map_darker", DIM, COLORED_PLANES,
             COLORED_TRAILS, SHOW_LABELS, LABEL_TRANSPARENCY, LABEL_UNITS, SMALL_LABELS,
             GEOMETRIC_ALTITUDE, EGM_CONVERSION, QNH_CORRECTION,
             TRACK_UTC, HISTORIC_TRACK_UTC,
-            LAST_LEG_ONLY, ALTITUDE_CHART, INFOBLOCK, WIDE_INFOBLOCK,
-            HOVER_INFOBLOCK,
-            AUTO_SELECT, PICTURES_PLANESPOTTERS, PICTURES_PLANESPOTTING,
+            "map_last_leg_only", ALTITUDE_CHART, "map_infoblock", "map_wide_infoblock",
+            "map_hover_infoblock", AUTO_SELECT, "map_pictures_planespotters",
+            "map_pictures_planespotting",
             GROUND_VEHICLES, NON_ICAO, UPDATE_GPS, INCLUDE_FILTERS_URL,
             KEEP_FADED, DEBUG_TRACKS,
             DEBUG_SHOW_ALL
@@ -59,9 +51,7 @@ final class MapPreferences {
         try {
             result.put("textScale", preferences.getFloat(TEXT_SCALE, 1f));
             result.put("iconScale", preferences.getFloat(ICON_SCALE, 1f));
-            result.put("dark", preferences.getBoolean(DARK, false));
-            result.put("darker", preferences.getBoolean(DARKER, false));
-            result.put("dim", preferences.getBoolean(DIM, false));
+            result.put("dim", preferences.getBoolean(DIM, true));
             result.put("coloredPlanes", preferences.getBoolean(COLORED_PLANES, true));
             result.put("coloredTrails", preferences.getBoolean(COLORED_TRAILS, true));
             result.put("showLabels", preferences.getBoolean(SHOW_LABELS, true));
@@ -76,17 +66,8 @@ final class MapPreferences {
             boolean legacyTrackUtc = preferences.getBoolean(TRACK_UTC, true);
             result.put("historicTrackUtc",
                     preferences.getBoolean(HISTORIC_TRACK_UTC, legacyTrackUtc));
-            result.put("lastLegOnly", preferences.getBoolean(LAST_LEG_ONLY, true));
             result.put("altitudeChart", preferences.getBoolean(ALTITUDE_CHART, true));
-            result.put("infoblock", preferences.getBoolean(INFOBLOCK, true));
-            result.put("wideInfoblock", preferences.getBoolean(WIDE_INFOBLOCK, false));
-            result.put("hoverInfoblock",
-                    preferences.getBoolean(HOVER_INFOBLOCK, false));
             result.put("autoSelect", preferences.getBoolean(AUTO_SELECT, false));
-            result.put("picturesPlanespotters",
-                    preferences.getBoolean(PICTURES_PLANESPOTTERS, true));
-            result.put("picturesPlanespotting",
-                    preferences.getBoolean(PICTURES_PLANESPOTTING, false));
             result.put("groundVehicles", preferences.getBoolean(GROUND_VEHICLES, true));
             result.put("nonIcao", preferences.getBoolean(NON_ICAO, true));
             result.put("updateGps", preferences.getBoolean(UPDATE_GPS, true));

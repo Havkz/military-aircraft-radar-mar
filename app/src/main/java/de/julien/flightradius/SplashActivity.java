@@ -90,10 +90,13 @@ public class SplashActivity extends Activity {
                 .putBoolean(AppPreferences.KEY_RUNNING, resumeMonitoring)
                 .putBoolean(AppPreferences.KEY_MONITORING_ENABLED, resumeMonitoring)
                 .putString(AppPreferences.KEY_CONNECTION, "standby");
-        if (previousVersion > 0 && previousVersion < 35) {
-            editor.remove(MapPreferences.DARK)
-                    .remove(MapPreferences.DARKER)
-                    .remove(MapPreferences.DIM);
+        if (previousVersion > 0 && previousVersion < 54) {
+            boolean dimMap = prefs.getBoolean(MapPreferences.DIM, true)
+                    || prefs.getBoolean("map_dark", false)
+                    || prefs.getBoolean("map_darker", false);
+            editor.putBoolean(MapPreferences.DIM, dimMap)
+                    .remove("map_dark")
+                    .remove("map_darker");
         }
         editor.apply();
         AppPreferences.clearLiveTelemetry(this);

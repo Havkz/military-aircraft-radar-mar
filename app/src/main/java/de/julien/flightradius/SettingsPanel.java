@@ -392,12 +392,8 @@ final class SettingsPanel extends ScrollView {
                 MapPreferences.ICON_SCALE, 70, 180, 100);
 
         section(root, MapL10n.t(host, "map_appearance"));
-        addMapSwitch(root, MapL10n.t(host, "dark_map"),
-                MapPreferences.DARK, false);
-        addMapSwitch(root, MapL10n.t(host, "darker_colors"),
-                MapPreferences.DARKER, false);
         addMapSwitch(root, MapL10n.t(host, "dim_map"),
-                MapPreferences.DIM, false);
+                MapPreferences.DIM, true);
         addMapSwitch(root, MapL10n.t(host, "colored_aircraft"),
                 MapPreferences.COLORED_PLANES, true);
         addMapSwitch(root, MapL10n.t(host, "colored_tracks"),
@@ -419,24 +415,12 @@ final class SettingsPanel extends ScrollView {
         addMapSwitch(root, MapL10n.t(host, "qnh_correct"),
                 MapPreferences.QNH_CORRECTION, false);
         section(root, MapL10n.t(host, "tracks_history"));
-        addMapSwitch(root, MapL10n.t(host, "last_leg"),
-                MapPreferences.LAST_LEG_ONLY, true);
         addMapSwitch(root, MapL10n.t(host, "keep_faded"),
                 MapPreferences.KEEP_FADED, false);
 
         section(root, MapL10n.t(host, "info_panel"));
-        addMapSwitch(root, MapL10n.t(host, "enable_info"),
-                MapPreferences.INFOBLOCK, true);
-        addMapSwitch(root, MapL10n.t(host, "wide_info"),
-                MapPreferences.WIDE_INFOBLOCK, false);
-        addMapSwitch(root, MapL10n.t(host, "hover_info"),
-                MapPreferences.HOVER_INFOBLOCK, false);
         addMapSwitch(root, MapL10n.t(host, "auto_select"),
                 MapPreferences.AUTO_SELECT, false);
-        addMapSwitch(root, MapL10n.t(host, "pictures_planespotters"),
-                MapPreferences.PICTURES_PLANESPOTTERS, true);
-        addMapSwitch(root, MapL10n.t(host, "pictures_planespotting"),
-                MapPreferences.PICTURES_PLANESPOTTING, false);
 
         section(root, MapL10n.t(host, "traffic_privacy"));
         addMapSwitch(root, MapL10n.t(host, "ground_vehicles"),

@@ -45,7 +45,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.21 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.22 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
@@ -112,7 +112,7 @@ final class AircraftMapPanel extends FrameLayout {
                 Double.isNaN(latitude) ? "null" : Double.toString(latitude),
                 Double.isNaN(longitude) ? "null" : Double.toString(longitude),
                 radius, mapSettings.toString());
-        webView.evaluateJavascript("window.marResize&&window.marResize();" + script, null);
+        webView.evaluateJavascript(script, null);
     }
 
     void setPageVisible(boolean visible) {
