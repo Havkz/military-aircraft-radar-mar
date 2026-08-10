@@ -141,15 +141,28 @@ final class AircraftData {
                     String key = keys.next();
                     Object incoming = aircraft.opt(key);
                     boolean missing = !existing.has(key) || existing.isNull(key);
-                    boolean emptyText = incoming instanceof String
-                            && !((String) incoming).isEmpty()
-                            && existing.optString(key, "").isEmpty();
-                    if (missing || emptyText) {
-                        existing.put(key, aircraft.opt(key));
+                    boolean incomplete = !meaningful(existing.opt(key))
+                            && meaningful(incoming);
+                    if ((missing && meaningful(incoming)) || incomplete) {
+                        existing.put(key, incoming);
                     }
                 }
             }
         }
+    }
+
+    static boolean meaningful(Object value) {
+        if (value == null || value == JSONObject.NULL) return false;
+        if (value instanceof String) {
+            String text = ((String) value).trim().toLowerCase(Locale.US);
+            return !text.isEmpty() && !"-".equals(text) && !"—".equals(text)
+                    && !"n/a".equals(text) && !"na".equals(text)
+                    && !"none".equals(text) && !"null".equals(text)
+                    && !"unknown".equals(text) && !"unknown type".equals(text)
+                    && !"no callsign".equals(text);
+        }
+        if (value instanceof JSONArray) return ((JSONArray) value).length() > 0;
+        return true;
     }
 
     private static void mergeSources(JSONObject existing, JSONObject incoming)

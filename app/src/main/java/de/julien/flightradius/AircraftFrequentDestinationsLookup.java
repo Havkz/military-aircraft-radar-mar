@@ -34,7 +34,7 @@ final class AircraftFrequentDestinationsLookup {
     private static final long CACHE_MS = 24 * 60 * 60_000L;
     private static final String HOST = "https://globe.airplanes.live";
     private static final String USER_AGENT = "Mozilla/5.0 (Linux; Android) "
-            + "MilitaryAircraftRadar/1.2.32";
+            + "MilitaryAircraftRadar/1.2.33";
 
     private AircraftFrequentDestinationsLookup() { }
 

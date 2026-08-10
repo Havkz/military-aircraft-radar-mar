@@ -510,7 +510,7 @@ public class MonitorService extends Service implements LocationListener {
             if (querySupplemental && !adsbxKey.isEmpty()
                     && now - lastAdsbExchangeFetchMs >= ADSBX_REFRESH_MS) {
                 String adsbxEndpoint = String.format(Locale.US,
-                        "https://api.adsbexchange.com/v2/lat/%.5f/lon/%.5f/dist/%d/",
+                        "https://gateway.adsbexchange.com/api/aircraft/v2/lat/%.5f/lon/%.5f/dist/%d",
                         queryLatitude, queryLongitude, supplementalRadiusNm);
                 adsbxFuture = networkPool.submit(
                         () -> fetchAircraft(adsbxEndpoint, adsbxKey, "adsbexchange"));
@@ -729,8 +729,9 @@ public class MonitorService extends Service implements LocationListener {
                 String hex = aircraft.optString("hex", "").replace("~", "")
                         .trim().toLowerCase(Locale.US);
                 if (hex.isEmpty() || "unknown".equals(hex)) continue;
+                JSONObject cached = mapAircraftCache.get(hex);
                 mapAircraftCache.remove(hex);
-                mapAircraftCache.put(hex, aircraft);
+                mapAircraftCache.put(hex, mergeMapAircraft(cached, aircraft));
                 mapAircraftCacheTimes.put(hex, now);
             }
         }
@@ -740,6 +741,54 @@ public class MonitorService extends Service implements LocationListener {
             mapAircraftCacheTimes.remove(oldest);
         }
         return mapAircraftCacheJson(now);
+    }
+
+    private static JSONObject mergeMapAircraft(JSONObject cached, JSONObject fresh) {
+        if (cached == null) return fresh;
+        try {
+            JSONObject merged = new JSONObject(cached.toString());
+            java.util.Iterator<String> keys = fresh.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                Object incoming = fresh.opt(key);
+                if ("sources".equals(key)) {
+                    merged.put(key, mergedSources(
+                            merged.optJSONArray(key), fresh.optJSONArray(key)));
+                } else if ("db_flags".equals(key)) {
+                    merged.put(key, merged.optInt(key, 0) | fresh.optInt(key, 0));
+                } else if ("military".equals(key) || "rotorcraft".equals(key)) {
+                    merged.put(key, merged.optBoolean(key, false)
+                            || fresh.optBoolean(key, false));
+                } else if (!mapIdentityField(key)
+                        || AircraftData.meaningful(incoming)
+                        || !AircraftData.meaningful(merged.opt(key))) {
+                    merged.put(key, incoming);
+                }
+            }
+            return merged;
+        } catch (Exception ignored) {
+            return fresh;
+        }
+    }
+
+    private static boolean mapIdentityField(String key) {
+        return "callsign".equals(key) || "display_name".equals(key)
+                || "registration".equals(key) || "country".equals(key)
+                || "operator".equals(key) || "type".equals(key)
+                || "description".equals(key) || "category".equals(key);
+    }
+
+    private static JSONArray mergedSources(JSONArray first, JSONArray second) {
+        JSONArray result = new JSONArray();
+        Set<String> seen = new HashSet<>();
+        for (JSONArray sources : new JSONArray[]{first, second}) {
+            if (sources == null) continue;
+            for (int i = 0; i < sources.length(); i++) {
+                String source = sources.optString(i, "").trim();
+                if (!source.isEmpty() && seen.add(source)) result.put(source);
+            }
+        }
+        return result;
     }
 
     private static JSONArray mapAircraftCacheJson(long now) {
@@ -1210,16 +1259,17 @@ public class MonitorService extends Service implements LocationListener {
         item.put("non_icao", plane.optString("hex", "").startsWith("~"));
         item.put("callsign", callsign);
         item.put("display_name", AircraftData.displayName(plane));
-        item.put("registration", plane.optString("r", ""));
+        item.put("registration", firstAircraftText(
+                plane, "r", "registration", "reg"));
         item.put("country", IcaoCountry.providerOrHex(plane.optString("country",
                 plane.optString("country_name", "")), hex));
-        item.put("operator", plane.optString("ownOp",
-                plane.optString("operator", "")));
-        item.put("type", plane.optString("t", ""));
+        item.put("operator", firstAircraftText(
+                plane, "ownOp", "operator", "operator_name"));
+        item.put("type", firstAircraftText(
+                plane, "t", "typeCode", "icao_type", "aircraft_type"));
         item.put("data_source", plane.optString("type", ""));
         item.put("db_flags", plane.optInt("dbFlags", 0));
-        item.put("description", plane.optString("desc",
-                plane.optString("typeDescription", "")));
+        item.put("description", bestAircraftDescription(plane));
         item.put("category", plane.optString("category", ""));
         item.put("military", MilitaryClassifier.isMilitary(plane));
         item.put("rotorcraft", AircraftData.isRotorcraft(plane));
@@ -1300,6 +1350,26 @@ public class MonitorService extends Service implements LocationListener {
         item.put("alert", plane.has("alert") ? plane.optInt("alert", 0) : JSONObject.NULL);
         item.put("spi", plane.has("spi") ? plane.optInt("spi", 0) : JSONObject.NULL);
         return item;
+    }
+
+    private static String firstAircraftText(JSONObject aircraft, String... keys) {
+        for (String key : keys) {
+            Object value = aircraft.opt(key);
+            if (AircraftData.meaningful(value)) return String.valueOf(value).trim();
+        }
+        return "";
+    }
+
+    private static String bestAircraftDescription(JSONObject aircraft) {
+        String best = "";
+        for (String key : new String[]{"desc", "typeDescription", "description",
+                "model", "model_name"}) {
+            Object value = aircraft.opt(key);
+            if (!AircraftData.meaningful(value)) continue;
+            String text = String.valueOf(value).trim();
+            if (text.length() > best.length()) best = text;
+        }
+        return best;
     }
 
     private Object altitudeValueOrNull(Object value) {
