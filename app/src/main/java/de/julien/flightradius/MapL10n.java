@@ -89,7 +89,7 @@ final class MapL10n {
             {"altitude_details", "Altitude"},
             {"movement", "Movement"},
             {"signal_accuracy", "Signal & accuracy"},
-            {"single_request_coverage", "One live request covers the central 250 NM. Zoom in for complete traffic."},
+            {"single_request_coverage", "The visible area exceeds the 2500 NM live request. Zoom in for complete traffic."},
             {"important", "Important"},
             {"data_provider", "Data provider"},
             {"emergency", "Emergency"},

@@ -465,7 +465,7 @@ public class MainActivity extends Activity {
             requestAndStart();
         } else if (mapVisible && !mapWasVisible) {
             startService(new Intent(this, MonitorService.class)
-                    .setAction(MonitorService.ACTION_RADIUS_CHANGED));
+                    .setAction(MonitorService.ACTION_VIEWPORT_CHANGED));
         }
         mapWasVisible = mapVisible;
     }
