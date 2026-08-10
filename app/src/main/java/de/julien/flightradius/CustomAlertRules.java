@@ -6,12 +6,8 @@ import android.content.SharedPreferences;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.util.LinkedHashSet;
-import java.util.Set;
-
 final class CustomAlertRules {
     static final String MODE_OFF = "off";
-    static final String MODE_EMERGENCY = "emergency";
     static final String MODE_CUSTOM = "custom";
     static final int INTERVAL_ONE_MINUTE = 1;
     static final int INTERVAL_FIVE_MINUTES = 5;
@@ -21,8 +17,15 @@ final class CustomAlertRules {
     static String mode(Context context) {
         SharedPreferences preferences = AppPreferences.get(context);
         if (preferences.contains(AppPreferences.KEY_SQUAWK_ALERT_MODE)) {
-            return normalizeMode(preferences.getString(
-                    AppPreferences.KEY_SQUAWK_ALERT_MODE, MODE_OFF));
+            String stored = preferences.getString(
+                    AppPreferences.KEY_SQUAWK_ALERT_MODE, MODE_OFF);
+            String normalized = normalizeMode(stored);
+            if (!normalized.equals(stored)) {
+                preferences.edit()
+                        .putString(AppPreferences.KEY_SQUAWK_ALERT_MODE, MODE_OFF)
+                        .remove(AppPreferences.KEY_SQUAWK_CUSTOM_CODE).apply();
+            }
+            return normalized;
         }
         migrateLegacyRules(preferences);
         return normalizeMode(preferences.getString(
@@ -51,8 +54,8 @@ final class CustomAlertRules {
 
     static String customSquawk(Context context) {
         String value = AppPreferences.get(context).getString(
-                AppPreferences.KEY_SQUAWK_CUSTOM_CODE, "7700");
-        return validSquawk(value) ? value : "7700";
+                AppPreferences.KEY_SQUAWK_CUSTOM_CODE, "");
+        return validSquawk(value) ? value : "";
     }
 
     static void setCustomSquawk(Context context, String value) {
@@ -61,25 +64,8 @@ final class CustomAlertRules {
                 .putString(AppPreferences.KEY_SQUAWK_CUSTOM_CODE, value).apply();
     }
 
-    static String querySquawks(Context context) {
-        String mode = mode(context);
-        if (MODE_EMERGENCY.equals(mode)) return "7500,7600,7700";
-        if (MODE_CUSTOM.equals(mode)) return customSquawk(context);
-        return "";
-    }
-
-    static Set<String> selectedSquawks(Context context) {
-        return parseSquawks(querySquawks(context));
-    }
-
-    static Set<String> parseSquawks(String value) {
-        Set<String> result = new LinkedHashSet<>();
-        if (value == null) return result;
-        for (String code : value.split(",")) {
-            String trimmed = code.trim();
-            if (validSquawk(trimmed)) result.add(trimmed);
-        }
-        return result;
+    static String querySquawk(Context context) {
+        return MODE_CUSTOM.equals(mode(context)) ? customSquawk(context) : "";
     }
 
     static boolean validSquawk(String value) {
@@ -91,19 +77,15 @@ final class CustomAlertRules {
                 ? INTERVAL_ONE_MINUTE : INTERVAL_FIVE_MINUTES) * 60_000L;
     }
 
-    static long airplanesIntervalMs(int minutes, boolean businessAuthorized,
-                                    int selectedCodeCount) {
+    static long airplanesIntervalMs(int minutes, boolean businessAuthorized) {
         long requested = requestedIntervalMs(minutes);
         // The free plan allows 500 requests/day. While global squawk alerts are
-        // enabled, point and squawk calls share that allowance. Airplanes.live
-        // requires one request per squawk, so the emergency preset rotates slower.
-        return businessAuthorized ? requested : Math.max(requested,
-                360_000L * Math.max(1, selectedCodeCount));
+        // enabled, point and fallback squawk calls share that allowance.
+        return businessAuthorized ? requested : Math.max(requested, 360_000L);
     }
 
     private static String normalizeMode(String value) {
-        if (MODE_EMERGENCY.equals(value) || MODE_CUSTOM.equals(value)) return value;
-        return MODE_OFF;
+        return MODE_CUSTOM.equals(value) ? MODE_CUSTOM : MODE_OFF;
     }
 
     private static void migrateLegacyRules(SharedPreferences preferences) {

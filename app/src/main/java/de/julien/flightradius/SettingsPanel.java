@@ -175,10 +175,9 @@ final class SettingsPanel extends ScrollView {
         TextView value = (TextView) row.getChildAt(1);
         Runnable refresh = () -> {
             String mode = CustomAlertRules.mode(host);
-            String label = CustomAlertRules.MODE_EMERGENCY.equals(mode)
-                    ? "7500 / 7600 / 7700"
-                    : CustomAlertRules.MODE_CUSTOM.equals(mode)
-                    ? "Squawk " + CustomAlertRules.customSquawk(host)
+            String custom = CustomAlertRules.customSquawk(host);
+            String label = CustomAlertRules.MODE_CUSTOM.equals(mode) && !custom.isEmpty()
+                    ? "Squawk " + custom
                     : MapL10n.t(host, "disabled");
             value.setText(label + "  ›");
         };
@@ -193,15 +192,15 @@ final class SettingsPanel extends ScrollView {
         boolean business = prefs.getBoolean(
                 AppPreferences.KEY_AIRPLANES_BUSINESS_RATE, false);
         int freeAirplanesMinutes = (int) (CustomAlertRules.airplanesIntervalMs(
-                interval, business, CustomAlertRules.selectedSquawks(host).size()) / 60_000L);
+                interval, business) / 60_000L);
         String[] entries = {
                 (CustomAlertRules.MODE_OFF.equals(mode) ? "●  " : "○  ")
                         + MapL10n.t(host, "disabled"),
-                (CustomAlertRules.MODE_EMERGENCY.equals(mode) ? "●  " : "○  ")
-                        + MapL10n.t(host, "emergency_squawks"),
                 (CustomAlertRules.MODE_CUSTOM.equals(mode) ? "●  " : "○  ")
                         + MapL10n.t(host, "custom_squawk") + " · "
-                        + CustomAlertRules.customSquawk(host),
+                        + (CustomAlertRules.customSquawk(host).isEmpty()
+                        ? MapL10n.t(host, "not_configured")
+                        : CustomAlertRules.customSquawk(host)),
                 "◷  " + MapL10n.t(host, "check_interval") + " · "
                         + interval + (interval == 1 ? " minute" : " minutes")
                         + (business ? "" : " · Airplanes.live Free: "
@@ -211,9 +210,6 @@ final class SettingsPanel extends ScrollView {
                         CustomAlertRules.setMode(host, CustomAlertRules.MODE_OFF);
                         saveSquawkAlertSettings(refresh);
                     } else if (which == 1) {
-                        CustomAlertRules.setMode(host, CustomAlertRules.MODE_EMERGENCY);
-                        saveSquawkAlertSettings(refresh);
-                    } else if (which == 2) {
                         editCustomSquawk(refresh);
                     } else chooseSquawkInterval(refresh);
                 });
@@ -227,6 +223,7 @@ final class SettingsPanel extends ScrollView {
         EditText code = ruleField(form, MapL10n.t(host, "squawk_code"),
                 CustomAlertRules.customSquawk(host), true);
         code.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(4)});
+        code.setKeyListener(android.text.method.DigitsKeyListener.getInstance("01234567"));
         Dialog alert = new Dialog(host);
         LinearLayout panel = modalPanel(MapL10n.t(host, "custom_squawk"));
         panel.addView(form, new LinearLayout.LayoutParams(-1, -2));

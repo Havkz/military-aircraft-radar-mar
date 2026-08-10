@@ -780,67 +780,57 @@ public class MonitorService extends Service implements LocationListener {
         boolean businessRate = AppPreferences.get(this).getBoolean(
                 AppPreferences.KEY_AIRPLANES_BUSINESS_RATE, false);
         long base = airplanesBaseRefreshMs(businessRate);
-        if (!businessRate && !CustomAlertRules.querySquawks(this).isEmpty()) {
-            base = Math.max(base, 6 * 60_000L);
-        }
         return airplanesBackoff.delayMs(
                 base, System.currentTimeMillis());
     }
 
     private void pollGlobalSquawkAlerts(long now) {
-        String squawks = CustomAlertRules.querySquawks(this);
-        if (squawks.isEmpty() || networkPool == null) return;
+        String configuredSquawk = CustomAlertRules.querySquawk(this);
+        if (configuredSquawk.isEmpty() || networkPool == null) return;
         int intervalMinutes = CustomAlertRules.intervalMinutes(this);
         long requestedInterval = CustomAlertRules.requestedIntervalMs(intervalMinutes);
-        Set<String> selectedSquawks = CustomAlertRules.selectedSquawks(this);
         boolean businessRate = AppPreferences.get(this).getBoolean(
                 AppPreferences.KEY_AIRPLANES_BUSINESS_RATE, false);
         long airplanesInterval = CustomAlertRules.airplanesIntervalMs(
-                intervalMinutes, businessRate, selectedSquawks.size());
+                intervalMinutes, businessRate);
         android.content.SharedPreferences preferences = AppPreferences.get(this);
-        List<Future<JSONArray>> futures = new ArrayList<>();
-        android.content.SharedPreferences.Editor attempts = preferences.edit();
         long adsbLolLast = preferences.getLong(
                 AppPreferences.KEY_SQUAWK_ADSB_LOL_LAST_ATTEMPT_MS, 0L);
-        if (providerDue(adsbLolLast, requestedInterval, now)) {
-            attempts.putLong(AppPreferences.KEY_SQUAWK_ADSB_LOL_LAST_ATTEMPT_MS, now);
-            futures.add(networkPool.submit(() -> fetchAircraft(
-                    globalSquawkEndpoint("adsb.lol", squawks),
-                    null, "adsb.lol")));
-        }
-        long airplanesLast = preferences.getLong(
-                AppPreferences.KEY_SQUAWK_AIRPLANES_LAST_ATTEMPT_MS, 0L);
-        if (providerDue(airplanesLast, airplanesInterval, now)) {
-            attempts.putLong(AppPreferences.KEY_SQUAWK_AIRPLANES_LAST_ATTEMPT_MS, now);
-            for (String code : selectedSquawks) {
-                futures.add(networkPool.submit(() -> fetchAircraft(
-                        globalSquawkEndpoint("airplanes.live", code),
-                        null, "airplanes.live")));
-            }
-        }
+        if (!providerDue(adsbLolLast, requestedInterval, now)) return;
+
+        preferences.edit().putLong(
+                AppPreferences.KEY_SQUAWK_ADSB_LOL_LAST_ATTEMPT_MS, now).apply();
+        JSONArray received = awaitOptional(networkPool.submit(() -> fetchAircraft(
+                globalSquawkEndpoint("adsb.lol", configuredSquawk),
+                null, "adsb.lol")));
+
+        // ADSB.lol provides the documented global exact-squawk endpoint and is
+        // authoritative here. Only try another source when that request failed;
+        // an empty successful response correctly means that no aircraft matched.
         String adsbxKey = ProviderCredentials.adsbExchangeKey(this);
         long adsbxLast = preferences.getLong(
                 AppPreferences.KEY_SQUAWK_ADSBX_LAST_ATTEMPT_MS, 0L);
-        if (!adsbxKey.isEmpty() && providerDue(adsbxLast, requestedInterval, now)) {
-            attempts.putLong(AppPreferences.KEY_SQUAWK_ADSBX_LAST_ATTEMPT_MS, now);
-            futures.add(networkPool.submit(() -> fetchAircraft(
-                    globalSquawkEndpoint("adsbexchange", squawks),
+        if (received == null && !adsbxKey.isEmpty()
+                && providerDue(adsbxLast, requestedInterval, now)) {
+            preferences.edit().putLong(
+                    AppPreferences.KEY_SQUAWK_ADSBX_LAST_ATTEMPT_MS, now).apply();
+            received = awaitOptional(networkPool.submit(() -> fetchAircraft(
+                    globalSquawkEndpoint("adsbexchange", configuredSquawk),
                     adsbxKey, "adsbexchange")));
         }
-        if (futures.isEmpty()) return;
-        attempts.apply();
-        List<JSONArray> received = new ArrayList<>();
-        for (Future<JSONArray> future : futures) {
-            JSONArray result = awaitOptional(future);
-            if (result != null) received.add(result);
+        long airplanesLast = preferences.getLong(
+                AppPreferences.KEY_SQUAWK_AIRPLANES_LAST_ATTEMPT_MS, 0L);
+        if (received == null && providerDue(airplanesLast, airplanesInterval, now)) {
+            preferences.edit().putLong(
+                    AppPreferences.KEY_SQUAWK_AIRPLANES_LAST_ATTEMPT_MS, now).apply();
+            received = awaitOptional(networkPool.submit(() -> fetchAircraft(
+                    globalSquawkEndpoint("airplanes.live", configuredSquawk),
+                    null, "airplanes.live")));
         }
-        if (received.isEmpty()) return;
-        try {
-            JSONArray merged = AircraftData.mergeByHex(
-                    received.toArray(new JSONArray[0]));
-            processGlobalSquawkAircraft(merged, selectedSquawks, now,
-                    Math.max(requestedInterval, airplanesInterval));
-        } catch (Exception ignored) { }
+        if (received != null) {
+            processGlobalSquawkAircraft(received, configuredSquawk, now,
+                    requestedInterval);
+        }
     }
 
     static boolean providerDue(long lastAttempt, long interval, long now) {
@@ -854,10 +844,37 @@ public class MonitorService extends Service implements LocationListener {
         if ("adsbexchange".equals(provider)) {
             return "https://gateway.adsbexchange.com/api/aircraft/v2/sqk/" + squawks;
         }
-        return "https://api.adsb.lol/v2/squawk/" + squawks;
+        return "https://api.adsb.lol/v2/sqk/" + squawks;
     }
 
-    private void processGlobalSquawkAircraft(JSONArray aircraft, Set<String> selected,
+    static String normalizeApiSquawk(Object rawValue) {
+        if (rawValue instanceof Number) {
+            double decimal = ((Number) rawValue).doubleValue();
+            int integer = (int) decimal;
+            if (decimal != integer || integer < 0 || integer > 7777) return "";
+            String value = String.format(Locale.US, "%04d", integer);
+            return CustomAlertRules.validSquawk(value) ? value : "";
+        }
+        String value = rawValue instanceof String ? ((String) rawValue).trim() : "";
+        return CustomAlertRules.validSquawk(value) ? value : "";
+    }
+
+    static boolean exactSquawkMatch(JSONObject aircraft, String configuredSquawk) {
+        return aircraft != null && CustomAlertRules.validSquawk(configuredSquawk)
+                && configuredSquawk.equals(normalizeApiSquawk(aircraft.opt("squawk")));
+    }
+
+    static JSONArray exactSquawkAircraft(JSONArray aircraft, String configuredSquawk) {
+        JSONArray matches = new JSONArray();
+        if (aircraft == null) return matches;
+        for (int i = 0; i < aircraft.length(); i++) {
+            JSONObject item = aircraft.optJSONObject(i);
+            if (exactSquawkMatch(item, configuredSquawk)) matches.put(item);
+        }
+        return matches;
+    }
+
+    private void processGlobalSquawkAircraft(JSONArray aircraft, String selectedSquawk,
                                              long now, long requestedInterval) {
         long expiry = Math.max(2 * requestedInterval, 2 * 60_000L);
         List<String> expired = new ArrayList<>();
@@ -866,11 +883,10 @@ public class MonitorService extends Service implements LocationListener {
         }
         for (String key : expired) activeGlobalSquawks.remove(key);
         JSONArray mapItems = new JSONArray();
-        for (int i = 0; i < aircraft.length(); i++) {
-            JSONObject plane = aircraft.optJSONObject(i);
-            if (plane == null) continue;
-            String squawk = plane.optString("squawk", "").trim();
-            if (!selected.contains(squawk)) continue;
+        JSONArray matchingAircraft = exactSquawkAircraft(aircraft, selectedSquawk);
+        for (int i = 0; i < matchingAircraft.length(); i++) {
+            JSONObject plane = matchingAircraft.optJSONObject(i);
+            String squawk = normalizeApiSquawk(plane.opt("squawk"));
             String hex = plane.optString("hex", "").replace("~", "")
                     .trim().toLowerCase(Locale.US);
             if (hex.isEmpty()) continue;
