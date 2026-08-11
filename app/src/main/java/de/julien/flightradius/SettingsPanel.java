@@ -343,6 +343,8 @@ final class SettingsPanel extends ScrollView {
         section(root, MapL10n.t(host, "advanced"));
         addMapSwitch(root, MapL10n.t(host, "debug_tracks"),
                 MapPreferences.DEBUG_TRACKS, false);
+        addMapSwitch(root, MapL10n.t(host, "debug_track_timestamps"),
+                MapPreferences.DEBUG_TRACK_TIMESTAMPS, false);
         addMapSwitch(root, MapL10n.t(host, "bypass_filters"),
                 MapPreferences.DEBUG_SHOW_ALL, false);
         TextView reset = label(MapL10n.t(host, "reset_all").toUpperCase(),

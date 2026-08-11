@@ -28,6 +28,7 @@ final class MapPreferences {
     static final String INCLUDE_FILTERS_URL = "map_include_filters_url";
     static final String KEEP_FADED = "map_keep_faded";
     static final String DEBUG_TRACKS = "map_debug_tracks";
+    static final String DEBUG_TRACK_TIMESTAMPS = "map_debug_track_timestamps";
     static final String DEBUG_SHOW_ALL = "map_debug_show_all";
 
     private static final String[] KEYS = {
@@ -39,7 +40,7 @@ final class MapPreferences {
             "map_hover_infoblock", AUTO_SELECT, "map_pictures_planespotters",
             "map_pictures_planespotting",
             GROUND_VEHICLES, NON_ICAO, UPDATE_GPS, INCLUDE_FILTERS_URL,
-            KEEP_FADED, DEBUG_TRACKS,
+            KEEP_FADED, DEBUG_TRACKS, DEBUG_TRACK_TIMESTAMPS,
             DEBUG_SHOW_ALL
     };
 
@@ -75,6 +76,8 @@ final class MapPreferences {
                     preferences.getBoolean(INCLUDE_FILTERS_URL, false));
             result.put("keepFaded", preferences.getBoolean(KEEP_FADED, false));
             result.put("debugTracks", preferences.getBoolean(DEBUG_TRACKS, false));
+            result.put("debugTrackTimestamps",
+                    preferences.getBoolean(DEBUG_TRACK_TIMESTAMPS, false));
             result.put("debugShowAll", preferences.getBoolean(DEBUG_SHOW_ALL, false));
             result.put("metric", AppPreferences.usesMetric(context));
             result.put("strings", MapL10n.json(context));

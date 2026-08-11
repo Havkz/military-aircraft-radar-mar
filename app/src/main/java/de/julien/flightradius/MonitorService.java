@@ -68,8 +68,6 @@ public class MonitorService extends Service implements LocationListener {
     private static final int MAX_MAP_CACHE_AIRCRAFT = 10_000;
     private static final double MAP_MAX_POSITION_AGE_SECONDS = 210d;
     private static final int EXPANDED_MAP_RADIUS_NM = 2_500;
-    private static final int MAP_SUPPLEMENTAL_RADIUS_NM = 45;
-    private static final long MAP_SUPPLEMENTAL_DWELL_MS = 12_000L;
     private static final double NAUTICAL_MILE_KM = 1.852d;
     private static final long WAKE_LOCK_TIMEOUT_MS = 10 * 60_000L;
     private static final long WAKE_LOCK_RENEW_MS = 9 * 60_000L;
@@ -86,7 +84,6 @@ public class MonitorService extends Service implements LocationListener {
     private static volatile double mapCenterLongitude = Double.NaN;
     private static volatile int mapRadiusNm = 25;
     private static volatile String isolatedMapHex = "";
-    private static volatile long mapViewportChangedAtMs = System.currentTimeMillis();
     private static volatile long mapViewportGeneration;
     private static final Map<String, JSONObject> mapAircraftCache = new LinkedHashMap<>();
     private static final Map<String, Long> mapAircraftCacheTimes = new HashMap<>();
@@ -160,7 +157,6 @@ public class MonitorService extends Service implements LocationListener {
             mapCenterLatitude = latitude;
             mapCenterLongitude = longitude;
             mapRadiusNm = boundedRadius;
-            mapViewportChangedAtMs = System.currentTimeMillis();
             mapViewportGeneration++;
             pruneMapAircraftCacheToViewport();
         }
@@ -173,7 +169,6 @@ public class MonitorService extends Service implements LocationListener {
         if (hex.length() != 6) hex = "";
         if (hex.equals(isolatedMapHex)) return false;
         isolatedMapHex = hex;
-        mapViewportChangedAtMs = System.currentTimeMillis();
         mapViewportGeneration++;
         return true;
     }
@@ -195,12 +190,6 @@ public class MonitorService extends Service implements LocationListener {
     static long airplanesBaseRefreshMs(boolean businessRateAuthorized) {
         return businessRateAuthorized
                 ? AIRPLANES_BUSINESS_REFRESH_MS : AIRPLANES_REFRESH_MS;
-    }
-
-    static boolean shouldQueryMapSupplementalSources(
-            boolean expandedMap, int radiusNm, long viewportStableMs) {
-        return !expandedMap || radiusNm <= MAP_SUPPLEMENTAL_RADIUS_NM
-                || viewportStableMs >= MAP_SUPPLEMENTAL_DWELL_MS;
     }
 
     static boolean viewportCoversAlertArea(double viewportLatitude,
@@ -298,7 +287,7 @@ public class MonitorService extends Service implements LocationListener {
         if (monitorWakeLock != null) {
             worker.postDelayed(renewWakeLockTask, WAKE_LOCK_RENEW_MS);
         }
-        networkPool = Executors.newFixedThreadPool(4);
+        networkPool = Executors.newFixedThreadPool(5);
         immediateMapExecutor = Executors.newFixedThreadPool(2);
         squawkExecutor = Executors.newSingleThreadExecutor();
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
@@ -520,9 +509,6 @@ public class MonitorService extends Service implements LocationListener {
         if (expandedMap) mapLoading = true;
         try {
             long now = System.currentTimeMillis();
-            long viewportStableMs = Math.max(0L, now - mapViewportChangedAtMs);
-            boolean querySupplemental = shouldQueryMapSupplementalSources(expandedMap,
-                    radiusNm, viewportStableMs);
             Future<JSONArray> regionalFuture = networkPool.submit(() ->
                     fetchMapAircraft(queryLatitude, queryLongitude, radiusNm, isolatedHex));
             Future<JSONArray> alertsFuture = null;
@@ -537,15 +523,13 @@ public class MonitorService extends Service implements LocationListener {
             Future<JSONArray> airplanesFuture = null;
             Future<JSONArray> adsbxFuture = null;
             int supplementalRadiusNm = Math.min(radiusNm, 250);
-            if (querySupplemental
-                    && now - lastAdsbLolMilitaryFetchMs >= ADSB_LOL_MILITARY_REFRESH_MS) {
+            if (now - lastAdsbLolMilitaryFetchMs >= ADSB_LOL_MILITARY_REFRESH_MS) {
                 militaryFuture = networkPool.submit(
                         () -> fetchAircraft(MILITARY_ENDPOINT, null, "adsb.lol"));
             }
             long persistedAirplanesAttempt = AppPreferences.get(this).getLong(
                     AppPreferences.KEY_AIRPLANES_LAST_ATTEMPT_MS, 0L);
-            if (querySupplemental
-                    && now - Math.max(lastAirplanesFetchMs, persistedAirplanesAttempt)
+            if (now - Math.max(lastAirplanesFetchMs, persistedAirplanesAttempt)
                     >= nextAirplanesDelayMs()) {
                 lastAirplanesFetchMs = now;
                 AppPreferences.get(this).edit()
@@ -557,7 +541,7 @@ public class MonitorService extends Service implements LocationListener {
                         () -> fetchAircraft(airplanesEndpoint, null, "airplanes.live"));
             }
             String adsbxKey = ProviderCredentials.adsbExchangeKey(this);
-            if (querySupplemental && !adsbxKey.isEmpty()
+            if (!adsbxKey.isEmpty()
                     && now - lastAdsbExchangeFetchMs >= ADSBX_REFRESH_MS) {
                 String adsbxEndpoint = String.format(Locale.US,
                         "https://gateway.adsbexchange.com/api/aircraft/v2/lat/%.5f/lon/%.5f/dist/%d",

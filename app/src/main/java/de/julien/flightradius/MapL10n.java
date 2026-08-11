@@ -51,6 +51,7 @@ final class MapL10n {
             {"include_filters_url", "Include filters in the map URL"},
             {"advanced", "Advanced"},
             {"debug_tracks", "Debug track labels"},
+            {"debug_track_timestamps", "Debug track timestamps"},
             {"bypass_filters", "Debug: bypass filters"},
             {"reset_all", "Reset all map settings"},
             {"search_hint", "Callsign, registration, hex or type"},
@@ -161,7 +162,10 @@ final class MapL10n {
             {"baro_rate", "Barometric rate"},
             {"geom_rate", "Geometric rate"},
             {"magnetic_declination", "Magnetic declination"},
-            {"position_epoch", "Position epoch"}
+            {"position_epoch", "Position epoch"},
+            {"copy_aircraft_info", "Copy all aircraft information"},
+            {"copy", "Copy"},
+            {"copied", "Copied"}
     };
 
     private MapL10n() { }

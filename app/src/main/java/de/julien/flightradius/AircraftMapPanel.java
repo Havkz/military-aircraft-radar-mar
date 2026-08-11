@@ -1,6 +1,9 @@
 package de.julien.flightradius;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
@@ -48,7 +51,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.42 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.43 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
@@ -188,6 +191,17 @@ final class AircraftMapPanel extends FrameLayout {
                 if (pageVisible && MonitorService.isRunning()) {
                     host.startService(new Intent(host, MonitorService.class)
                             .setAction(MonitorService.ACTION_VIEWPORT_CHANGED));
+                }
+            });
+        }
+
+        @JavascriptInterface public void copyAircraftInfo(String text) {
+            host.runOnUiThread(() -> {
+                ClipboardManager clipboard = (ClipboardManager) host.getSystemService(
+                        Context.CLIPBOARD_SERVICE);
+                if (clipboard != null) {
+                    clipboard.setPrimaryClip(ClipData.newPlainText(
+                            "Aircraft information", text == null ? "" : text));
                 }
             });
         }
