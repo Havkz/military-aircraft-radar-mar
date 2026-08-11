@@ -8,7 +8,7 @@
   <script src="leaflet/leaflet.js"></script>
   <style>
     :root{--bg:#071018;--panel:#080b0e;--text:#eef5f8;--muted:#9daab2;--line:#43505a;--blue:#18a9ee;--green:#72f1b8;--orange:#ff9f43;--scale:1}
-    *{box-sizing:border-box}html,body,#map{height:100%;margin:0;background:var(--bg);font:calc(14px * var(--scale)) system-ui,sans-serif;color:var(--text)}#trafficCanvas{position:absolute;z-index:625;left:0;top:0;width:100%;height:100%;pointer-events:none}
+    *{box-sizing:border-box}html,body,#map{height:100%;margin:0;background:var(--bg);font:calc(14px * var(--scale)) system-ui,sans-serif;color:var(--text)}#trafficCanvas{position:absolute;z-index:625;left:0;top:0;width:100%;height:100%;pointer-events:none;opacity:1;transition:opacity .12s ease-out}
     .leaflet-container{background:#dce4e8}body.dim .leaflet-tile-pane{filter:brightness(.5) saturate(.7) contrast(1.14)}
     .toolbar{position:absolute;z-index:700;top:8px;left:8px;right:8px;display:flex;gap:5px;pointer-events:none}.tools{display:flex;background:rgba(0,0,0,.88);border-radius:20px;padding:2px;box-shadow:0 2px 7px #0007;pointer-events:auto}.tools.right{margin-left:auto}
     .map-location{position:absolute;z-index:700;right:12px;bottom:36px;width:46px;height:46px;padding:10px;border:1px solid #d3dbe0;border-radius:50%;background:rgba(255,255,255,.96);color:#176cba;box-shadow:0 3px 12px #0005;transition:transform .14s,background .18s;backdrop-filter:blur(8px)}.map-location:active{transform:scale(.92);background:#e7f3fc}body.dim .map-location{border-color:#334650;background:rgba(8,15,20,.94);color:#62c7ff}.map-location svg{display:block;width:100%;height:100%}
@@ -195,7 +195,7 @@
   window.marUpdate=function(raw,ownLat,ownLon,_radiusKm,nativeSettings){applyMapConfiguration(ownLat,ownLon,nativeSettings);let next=[];try{next=Array.isArray(raw)?raw:(JSON.parse(raw)||[])}catch(e){}cachePositionSnapshots(next);aircraft=next;next.forEach(a=>{known.delete(a.hex);known.set(a.hex,a)});while(known.size>2000)known.delete(known.keys().next().value);if(next.length)updateHistory(next);render();finishAircraftUpdate()};
   let viewportTimer=0;function reportViewport(){clearTimeout(viewportTimer);viewportTimer=setTimeout(()=>{if(!window.MarNative||!MarNative.setMapViewport)return;const center=map.getCenter();MarNative.setMapViewport(center.lat,center.lng,requestedViewportRadiusNm())},180)}
   let mapInteractionActive=false;
-  function pauseTraffic(){trafficPaused=true;if(canvasFrame){cancelAnimationFrame(canvasFrame);canvasFrame=0}trafficCanvas.style.opacity='0'}
+  function pauseTraffic(){trafficPaused=true;if(canvasFrame){cancelAnimationFrame(canvasFrame);canvasFrame=0}trafficCanvas.style.opacity='.22'}
   function resumeTraffic(){trafficPaused=false;trafficCanvas.style.opacity='1';scheduleCanvas()}
   function beginMapInteraction(){mapInteractionActive=true;pauseTraffic()}
   function endMapInteraction(){if(!mapInteractionActive)return;mapInteractionActive=false;resumeTraffic()}

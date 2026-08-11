@@ -26,6 +26,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -101,6 +102,10 @@ public class MonitorService extends Service implements LocationListener {
     private ExecutorService networkPool;
     private ExecutorService immediateMapExecutor;
     private volatile Future<?> immediateMapFuture;
+    private final Object globeRequestLock = new Object();
+    private volatile long lastGlobeRequestStartedMs;
+    private volatile String globeSessionCookie = "";
+    private volatile long globeSessionCookieExpiresMs;
     private LocationManager locationManager;
     private PowerManager.WakeLock monitorWakeLock;
     private volatile Location latestLocation;
@@ -215,6 +220,34 @@ public class MonitorService extends Service implements LocationListener {
         return String.format(Locale.US,
                 "https://api.adsb.lol/v2/lat/%.5f/lon/%.5f/dist/%d",
                 latitude, longitude, boundedViewportRadiusNm(radiusNm));
+    }
+
+    static boolean shouldUseGlobeBox(int radiusNm, String isolatedHex) {
+        return (isolatedHex == null || isolatedHex.isEmpty()) && radiusNm > 250;
+    }
+
+    static String mapGlobeEndpoint(double latitude, double longitude, int radiusNm) {
+        double latitudeSpan = Math.min(90d, boundedViewportRadiusNm(radiusNm) / 60d);
+        double south = Math.max(-90d, latitude - latitudeSpan);
+        double north = Math.min(90d, latitude + latitudeSpan);
+        double longitudeScale = Math.cos(Math.toRadians(Math.max(-85d,
+                Math.min(85d, latitude))));
+        double longitudeSpan = Math.min(180d, latitudeSpan / Math.max(.087d, longitudeScale));
+        double west = normalizeLongitude(longitude - longitudeSpan);
+        double east = normalizeLongitude(longitude + longitudeSpan);
+        if (longitudeSpan >= 179.99d) {
+            west = -180d;
+            east = 180d;
+        }
+        return String.format(Locale.US,
+                "https://adsb.lol/re-api/?binCraft&box=%.5f,%.5f,%.5f,%.5f",
+                south, north, west, east);
+    }
+
+    private static double normalizeLongitude(double longitude) {
+        while (longitude < -180d) longitude += 360d;
+        while (longitude > 180d) longitude -= 360d;
+        return longitude;
     }
 
     private final Runnable pollTask = new Runnable() {
@@ -349,8 +382,8 @@ public class MonitorService extends Service implements LocationListener {
         if (previous != null && !previous.isDone()) previous.cancel(true);
         immediateMapFuture = immediateMapExecutor.submit(() -> {
             try {
-                JSONArray response = fetchAircraft(mapAircraftEndpoint(
-                        latitude, longitude, radiusNm, isolatedHex), null, "adsb.lol");
+                JSONArray response = fetchMapAircraft(
+                        latitude, longitude, radiusNm, isolatedHex);
                 if (generation != mapViewportGeneration()) return;
                 long receivedAt = System.currentTimeMillis();
                 JSONArray compact = compactMapAircraft(
@@ -476,8 +509,6 @@ public class MonitorService extends Service implements LocationListener {
                 && (!viewportAvailable || viewportCoversAlertArea(
                 queryLatitude, queryLongitude, radiusNm,
                 own.getLatitude(), own.getLongitude(), radiusKm));
-        String localEndpoint = mapAircraftEndpoint(
-                queryLatitude, queryLongitude, radiusNm, isolatedHex);
         long requestMapGeneration = mapViewportGeneration();
 
         if (expandedMap) mapLoading = true;
@@ -486,8 +517,8 @@ public class MonitorService extends Service implements LocationListener {
             long viewportStableMs = Math.max(0L, now - mapViewportChangedAtMs);
             boolean querySupplemental = shouldQueryMapSupplementalSources(expandedMap,
                     radiusNm, viewportStableMs);
-            Future<JSONArray> regionalFuture = networkPool.submit(
-                    () -> fetchAircraft(localEndpoint, null, "adsb.lol"));
+            Future<JSONArray> regionalFuture = networkPool.submit(() ->
+                    fetchMapAircraft(queryLatitude, queryLongitude, radiusNm, isolatedHex));
             Future<JSONArray> alertsFuture = null;
             if (!regionalCoversAlertArea) {
                 String alertsEndpoint = String.format(Locale.US,
@@ -699,6 +730,87 @@ public class MonitorService extends Service implements LocationListener {
             }
             JSONArray aircraft = new JSONObject(json.toString()).optJSONArray("ac");
             return aircraft == null ? new JSONArray() : aircraft;
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private JSONArray fetchMapAircraft(double latitude, double longitude, int radiusNm,
+                                       String isolatedHex) throws Exception {
+        if (!shouldUseGlobeBox(radiusNm, isolatedHex)) {
+            return fetchAircraft(mapAircraftEndpoint(
+                    latitude, longitude, radiusNm, isolatedHex), null, "adsb.lol");
+        }
+        return fetchBinCraftAircraft(mapGlobeEndpoint(latitude, longitude, radiusNm));
+    }
+
+    private JSONArray fetchBinCraftAircraft(String endpoint) throws Exception {
+        synchronized (globeRequestLock) {
+            long waitMs = ADSB_LOL_BASE_REFRESH_MS
+                    - (System.currentTimeMillis() - lastGlobeRequestStartedMs);
+            if (waitMs > 0L) Thread.sleep(waitMs);
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+
+            for (int attempt = 0; attempt < 2; attempt++) {
+                String cookie = ensureGlobeSessionCookie(attempt > 0);
+                HttpURLConnection connection = null;
+                try {
+                    lastGlobeRequestStartedMs = System.currentTimeMillis();
+                    connection = (HttpURLConnection) new URL(endpoint).openConnection();
+                    connection.setConnectTimeout(5_000);
+                    connection.setReadTimeout(8_000);
+                    connection.setRequestProperty("User-Agent", "MilitaryAircraftRadar/4.1");
+                    connection.setRequestProperty("Accept", "application/octet-stream");
+                    connection.setRequestProperty("Referer", "https://adsb.lol/");
+                    connection.setRequestProperty("X-Requested-With", "XMLHttpRequest");
+                    connection.setRequestProperty("Cookie", cookie);
+                    int code = connection.getResponseCode();
+                    if (code == 207 || code == 208) continue;
+                    if (code == 429) {
+                        increaseRateLimitBackoff("adsb.lol");
+                        throw new IllegalStateException("Aircraft API HTTP 429");
+                    }
+                    if (code != 200) {
+                        throw new IllegalStateException("Aircraft API HTTP " + code);
+                    }
+                    try (InputStream stream = connection.getInputStream();
+                         ByteArrayOutputStream output = new ByteArrayOutputStream(
+                                 Math.max(8_192, connection.getContentLength()))) {
+                        byte[] buffer = new byte[16_384];
+                        int count;
+                        while ((count = stream.read(buffer)) >= 0) {
+                            if (count > 0) output.write(buffer, 0, count);
+                        }
+                        return BinCraftDecoder.decode(output.toByteArray());
+                    }
+                } finally {
+                    if (connection != null) connection.disconnect();
+                }
+            }
+            throw new IllegalStateException("ADSB.lol globe session rejected");
+        }
+    }
+
+    private synchronized String ensureGlobeSessionCookie(boolean forceRefresh) throws Exception {
+        long now = System.currentTimeMillis();
+        if (!forceRefresh && !globeSessionCookie.isEmpty()
+                && now < globeSessionCookieExpiresMs) return globeSessionCookie;
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL("https://adsb.lol/").openConnection();
+            connection.setRequestMethod("HEAD");
+            connection.setConnectTimeout(5_000);
+            connection.setReadTimeout(5_000);
+            connection.setRequestProperty("User-Agent", "MilitaryAircraftRadar/4.1");
+            int code = connection.getResponseCode();
+            if (code != 200) throw new IllegalStateException("ADSB.lol session HTTP " + code);
+            String setCookie = connection.getHeaderField("Set-Cookie");
+            if (setCookie == null || setCookie.isEmpty()) {
+                throw new IllegalStateException("ADSB.lol session cookie missing");
+            }
+            globeSessionCookie = setCookie.split(";", 2)[0];
+            globeSessionCookieExpiresMs = now + 8 * 60_000L;
+            return globeSessionCookie;
         } finally {
             if (connection != null) connection.disconnect();
         }
