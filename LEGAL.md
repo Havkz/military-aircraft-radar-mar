@@ -65,9 +65,9 @@ The Android map loads Leaflet 1.9.4 from unpkg and requests standard OpenStreetM
 - Leaflet: https://leafletjs.com/
 - Leaflet BSD 2-Clause License: https://github.com/Leaflet/Leaflet/blob/main/LICENSE
 
-## Aircraft photo-search links
+## Aircraft photos and registration metadata
 
-Planespotters.net and planespotting.be are optional external destinations opened only after an explicit tap in the aircraft information panel. MAR passes a registration search term but does not retrieve, embed, scrape, cache, or redistribute their photographs or site content. Their names, photographs, databases, and trademarks remain the property of their respective owners. No affiliation, sponsorship, or endorsement is claimed.
+When a user selects an aircraft that has a registration, MAR requests a registration-specific photo result from the public Planespotters.net photo endpoint and may query the matching Planespotting.be registration page as a fallback and metadata supplement. A returned thumbnail is displayed remotely in the infoblock with its source and photographer credit; it is not bundled with or republished by MAR. Verified registration-bound fields such as operator, aircraft type, MSN, and status may fill otherwise missing live-data fields, but never replace an existing value. General web or Wikimedia fallback images are not treated as aircraft-metadata sources. External data can be stale, incomplete, or incorrect. MAR performs no bulk photo or fleet-database download. Their names, photographs, databases, and trademarks remain the property of their respective owners. No affiliation, sponsorship, or endorsement is claimed.
 
 - Planespotters.net: https://www.planespotters.net/
 - Planespotting.be: https://www.planespotting.be/

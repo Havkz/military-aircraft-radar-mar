@@ -153,6 +153,8 @@ final class MapL10n {
             {"last_seen", "Last seen"},
             {"country", "Country"},
             {"operator", "Operator"},
+            {"status", "Status"},
+            {"metadata_source", "Metadata source"},
             {"baro_rate", "Barometric rate"},
             {"geom_rate", "Geometric rate"},
             {"magnetic_declination", "Magnetic declination"},

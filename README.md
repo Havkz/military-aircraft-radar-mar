@@ -80,7 +80,7 @@ Some aircraft may not be visible on Flightradar24. ADS-B Exchange can therefore 
 - Interactive OpenStreetMap aircraft map with provider deduplication by ICAO hex address and a visible own-location marker without a radius circle
 - Expanded 250 NM live-data area while the map tab is visible; background monitoring returns to the selected alert radius to reduce battery and data use
 - Map search, source/type/database filters, military-only mode, tracks, follow/isolate, multi-select, distance measurement, local bookmarks, and detailed aircraft infoblocks
-- Configurable map colors, labels, icon sizing, wind labels, WGS84/MSL and QNH altitude handling, separate live/history timestamp zones, hover details, track rendering, faded contacts, ground vehicles, non-ICAO targets, local filter URLs, and optional registration photo-search links
+- Configurable map colors, labels, icon sizing, wind labels, WGS84/MSL and QNH altitude handling, track rendering, faded contacts, ground vehicles, non-ICAO targets, local filter URLs, registration-specific credited photos, and missing operator/type/MSN/status supplementation from verified photo records
 - Adjustable 10–300 km radius with a marked 20–30 km recommendation
 - One-second ADSB.lol refresh with automatic 429 backoff in 0.5-second steps
 - Continuously updated per-aircraft notifications

@@ -22,7 +22,7 @@ When the Android map tab is first opened, its WebView loads Leaflet 1.9.4 from t
 
 When the user chooses to open an aircraft in Flightradar24 or ADS-B Exchange, Android opens the selected service's app or website with aircraft-identifying or map-position information in the link. Those services process data under their own terms and privacy policies.
 
-If the user explicitly opens a photo-search link from an aircraft infoblock, MAR sends the aircraft registration as a search parameter to planespotters.net or planespotting.be. MAR does not automatically load, scrape, cache, or redistribute photographs from either service.
+When the user selects an aircraft with a registration, Android sends that registration and, when available, its known type to Planespotters.net and Planespotting.be to obtain a registration-specific thumbnail and missing aircraft metadata such as operator, type, MSN, or status. Loading the returned remote thumbnail also exposes normal network metadata and the IP address to its image host. Results are kept only in the current in-memory map session and ordinary WebView/network cache; MAR does not bulk-download either service's photo or fleet database. The separate outbound photo-search links send the same registration when explicitly opened.
 
 Official provider information:
 

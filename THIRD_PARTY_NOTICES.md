@@ -57,7 +57,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” 
 
 ## External aircraft photo services
 
-Planespotters.net and planespotting.be are independent external services. MAR only opens registration-based search links after an explicit user action and does not include their photographs, logos, or website assets.
+Planespotters.net and planespotting.be are independent external services. For a user-selected registered aircraft, MAR can display a remotely loaded, credited thumbnail and use registration-bound operator/type/MSN/status fields only to supplement missing live data. MAR does not bundle their photographs, logos, or website assets, bulk-download their databases, or claim affiliation. Their own terms and rights apply to all returned content.
 
 - Planespotters.net: https://www.planespotters.net/
 - Planespotting.be: https://www.planespotting.be/

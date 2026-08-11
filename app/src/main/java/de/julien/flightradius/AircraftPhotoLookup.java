@@ -16,29 +16,51 @@ import java.util.zip.GZIPInputStream;
 
 final class AircraftPhotoLookup {
     private static final String USER_AGENT =
-            "MilitaryAircraftRadar/1.2.38 (+https://github.com/Havkz/military-aircraft-radar-mar)";
+            "MilitaryAircraftRadar/1.2.39 (+https://github.com/Havkz/military-aircraft-radar-mar)";
 
     private AircraftPhotoLookup() { }
 
     static JSONObject find(String registration, String aircraftType) {
         String normalized = normalizeRegistration(registration);
         if (normalized.isEmpty()) return new JSONObject();
+        JSONObject planespotters = new JSONObject();
+        JSONObject verifiedMetadata = new JSONObject();
         try {
-            JSONObject result = parsePlanespotters(get(
+            planespotters = parsePlanespotters(get(
                     "https://api.planespotters.net/pub/photos/reg/" + path(registration)),
                     normalized);
-            if (result.length() > 0) return result;
         } catch (Exception ignored) { }
+        String planespottingHtml = "";
         try {
-            JSONObject result = parsePlanespotting(get(
+            planespottingHtml = get(
                     "https://www.planespotting.be/index.php?page=aircraft&registration="
-                            + path(registration)), normalized);
-            if (result.length() > 0) return result;
+                            + path(registration));
+            JSONObject planespotting = parsePlanespotting(planespottingHtml, normalized);
+            JSONObject planespottingMetadata = new JSONObject();
+            addPlanespottingMetadata(planespottingMetadata, planespottingHtml, normalized);
+            verifiedMetadata = planespottingMetadata;
+            mergeMissing(planespotting, planespottingMetadata);
+            if (planespotters.length() > 0) {
+                mergeMissing(planespotters, planespotting);
+                mergeMissing(planespotters, planespottingMetadata);
+                if (planespottingMetadata.length() > 0) {
+                    planespotters.put("metadata_source", "Planespotting.be");
+                }
+                return planespotters;
+            }
+            if (planespotting.length() > 0) return planespotting;
         } catch (Exception ignored) { }
+        if (planespotters.length() > 0) return planespotters;
         try {
-            return parseWikimedia(get(wikimediaUrl(registration, aircraftType)), normalized);
+            JSONObject fallback = parseWikimedia(
+                    get(wikimediaUrl(registration, aircraftType)), normalized);
+            if (verifiedMetadata.length() > 0) {
+                mergeMissing(fallback, verifiedMetadata);
+                fallback.put("metadata_verified", true);
+            }
+            return fallback.length() > 0 ? fallback : verifiedMetadata;
         } catch (Exception ignored) {
-            return new JSONObject();
+            return verifiedMetadata;
         }
     }
 
@@ -59,8 +81,10 @@ final class AircraftPhotoLookup {
         if (!normalizeRegistration(link).contains(normalizedRegistration)) {
             return new JSONObject();
         }
-        return photo(thumbnail.optString("src"), link,
+        JSONObject result = photo(thumbnail.optString("src"), link,
                 "Planespotters.net", photo.optString("photographer"));
+        addPlanespottersLinkMetadata(result, link, normalizedRegistration);
+        return result;
     }
 
     static JSONObject parsePlanespotting(String html, String normalizedRegistration)
@@ -70,8 +94,107 @@ final class AircraftPhotoLookup {
                 + registration + "(?=[^A-Z0-9])[^\\\"]*)\\\".{0,900}?<img[^>]+src=\\\"(https://www\\.planespotting\\.be/uploads/[^\\\"]+-(?:thumb|spotlight)\\.[a-z0-9]+)\\\"");
         Matcher match = card.matcher(html);
         if (!match.find()) return new JSONObject();
-        return photo(match.group(2), match.group(1).replace("&amp;", "&"),
+        JSONObject result = photo(match.group(2), match.group(1).replace("&amp;", "&"),
                 "Planespotting.be", "");
+        addPlanespottingMetadata(result, html, normalizedRegistration);
+        return result;
+    }
+
+    private static void addPlanespottersLinkMetadata(JSONObject result, String link,
+                                                      String normalizedRegistration)
+            throws Exception {
+        String path = link == null ? "" : link.replaceAll("[?#].*$", "");
+        String slug = path.substring(path.lastIndexOf('/') + 1).toLowerCase(Locale.US);
+        String[] parts = slug.split("-");
+        int registrationEnd = -1;
+        StringBuilder registration = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            registration.append(parts[i].replaceAll("[^a-z0-9]", ""));
+            if (registration.toString().equalsIgnoreCase(normalizedRegistration)) {
+                registrationEnd = i + 1;
+                break;
+            }
+            if (registration.length() >= normalizedRegistration.length()) break;
+        }
+        if (registrationEnd < 0) return;
+        int manufacturer = -1;
+        for (int i = registrationEnd; i < parts.length; i++) {
+            if (isManufacturer(parts[i])) {
+                manufacturer = i;
+                break;
+            }
+        }
+        if (manufacturer < registrationEnd) return;
+        putIfText(result, "operator", words(parts, registrationEnd, manufacturer));
+        putIfText(result, "description", words(parts, manufacturer, parts.length));
+        result.put("metadata_source", "Planespotters.net");
+    }
+
+    private static void addPlanespottingMetadata(JSONObject result, String html,
+                                                  String normalizedRegistration)
+            throws Exception {
+        Matcher title = Pattern.compile("(?is)<meta[^>]+property=\\\"og:title\\\"[^>]+content=\\\"([^\\\"]+)\\\"")
+                .matcher(html);
+        if (!title.find() || !normalizeRegistration(title.group(1))
+                .contains(normalizedRegistration)) return;
+        int fieldsBefore = result.length();
+        putIfText(result, "operator", labelledHtmlValue(html, "Operator"));
+        String type = labelledHtmlValue(html, "Type");
+        putIfText(result, "description", type.replaceFirst("\\s*\\([A-Z0-9-]{2,6}\\)\\s*$", ""));
+        Matcher typeCode = Pattern.compile("\\(([A-Z0-9-]{2,6})\\)\\s*$").matcher(type);
+        if (typeCode.find()) putIfText(result, "type", typeCode.group(1));
+        putIfText(result, "msn", labelledHtmlValue(html, "MSN"));
+        putIfText(result, "status", labelledHtmlValue(html, "Status"));
+        if (result.length() > fieldsBefore) result.put("metadata_source", "Planespotting.be");
+    }
+
+    private static String labelledHtmlValue(String html, String label) {
+        Pattern pattern = Pattern.compile("(?is)<b>\\s*" + Pattern.quote(label)
+                + "\\s*</b>\\s*<br\\s*/?>(.{0,500}?)(?=</li>|<li\\b)");
+        Matcher matcher = pattern.matcher(html);
+        if (!matcher.find()) return "";
+        return cleanHtml(matcher.group(1));
+    }
+
+    private static String cleanHtml(String value) {
+        return value == null ? "" : value.replaceAll("(?is)<[^>]+>", " ")
+                .replace("&amp;", "&").replace("&quot;", "\"")
+                .replace("&#39;", "'").replace("&nbsp;", " ")
+                .replaceAll("\\s+", " ").trim();
+    }
+
+    private static boolean isManufacturer(String value) {
+        return value.matches("airbus|boeing|embraer|bombardier|cessna|gulfstream|dassault|"
+                + "beech|beechcraft|bell|sikorsky|leonardo|eurocopter|robinson|piper|"
+                + "lockheed|antonov|ilyushin|tupolev|saab|pilatus|cirrus|diamond|"
+                + "textron|fairchild|fokker|atr|mcdonnell|douglas|dehavilland");
+    }
+
+    private static String words(String[] parts, int start, int end) {
+        StringBuilder value = new StringBuilder();
+        for (int i = start; i < end; i++) {
+            if (parts[i].isEmpty()) continue;
+            if (value.length() > 0) value.append(' ');
+            String part = parts[i];
+            value.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+        }
+        return value.toString();
+    }
+
+    private static void putIfText(JSONObject target, String key, String value) throws Exception {
+        if (value != null && !value.trim().isEmpty()) target.put(key, value.trim());
+    }
+
+    private static void mergeMissing(JSONObject target, JSONObject supplement) throws Exception {
+        if (supplement == null) return;
+        String[] keys = {"operator", "description", "type", "msn", "status",
+                "metadata_source"};
+        for (String key : keys) {
+            if (target.optString(key).trim().isEmpty()
+                    && !supplement.optString(key).trim().isEmpty()) {
+                target.put(key, supplement.optString(key).trim());
+            }
+        }
     }
 
     static JSONObject parseWikimedia(String json, String normalizedRegistration)
