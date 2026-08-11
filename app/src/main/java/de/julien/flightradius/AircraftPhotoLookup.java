@@ -6,6 +6,7 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -16,7 +17,7 @@ import java.util.zip.GZIPInputStream;
 
 final class AircraftPhotoLookup {
     private static final String USER_AGENT =
-            "MilitaryAircraftRadar/1.2.48 (+https://github.com/Havkz/military-aircraft-radar-mar)";
+            "MilitaryAircraftRadar/1.2.49 (+https://github.com/Havkz/military-aircraft-radar-mar)";
 
     private AircraftPhotoLookup() { }
 
@@ -27,7 +28,6 @@ final class AircraftPhotoLookup {
     static JSONObject find(String hex, String registration, String aircraftType) {
         String normalized = normalizeRegistration(registration);
         JSONObject planespotters = new JSONObject();
-        JSONObject verifiedMetadata = new JSONObject();
         String normalizedHex = normalizeHex(hex);
         try {
             if (!normalizedHex.isEmpty()) {
@@ -46,41 +46,133 @@ final class AircraftPhotoLookup {
         String resolvedRegistration = firstMeaningful(
                 registration, planespotters.optString("registration"));
         String resolvedNormalized = normalizeRegistration(resolvedRegistration);
-        if (resolvedNormalized.isEmpty()) return planespotters;
-        String planespottingHtml = "";
-        try {
-            planespottingHtml = get(
-                    "https://www.planespotting.be/index.php?page=aircraft&registration="
-                            + path(resolvedRegistration));
-            JSONObject planespotting = parsePlanespotting(
-                    planespottingHtml, resolvedNormalized);
-            JSONObject planespottingMetadata = new JSONObject();
-            addPlanespottingMetadata(
-                    planespottingMetadata, planespottingHtml, resolvedNormalized);
-            verifiedMetadata = planespottingMetadata;
-            mergeMissing(planespotting, planespottingMetadata);
-            if (planespotters.length() > 0) {
-                mergeMissing(planespotters, planespotting);
-                mergeMissing(planespotters, planespottingMetadata);
-                if (planespottingMetadata.length() > 0) {
-                    planespotters.put("metadata_source", "Planespotting.be");
-                }
-                return planespotters;
-            }
-            if (planespotting.length() > 0) return planespotting;
-        } catch (Exception ignored) { }
-        if (planespotters.length() > 0) return planespotters;
+        JSONObject result = planespotters;
+        if (!resolvedNormalized.isEmpty()) {
+            try {
+                String planespottingHtml = get(
+                        "https://www.planespotting.be/index.php?page=aircraft&registration="
+                                + path(resolvedRegistration));
+                JSONObject planespotting = parsePlanespotting(
+                        planespottingHtml, resolvedNormalized);
+                JSONObject planespottingMetadata = new JSONObject();
+                addPlanespottingMetadata(
+                        planespottingMetadata, planespottingHtml, resolvedNormalized);
+                mergeMissing(planespotting, planespottingMetadata);
+                if (result.length() == 0) result = planespotting;
+                else mergeMissing(result, planespotting);
+            } catch (Exception ignored) { }
+        }
+        if (needsAircraftDatabaseFallback(result)) {
+            try {
+                JSONObject militaryFallback = findAdsbNl(
+                        normalizedHex, resolvedRegistration);
+                if (result.length() == 0) result = militaryFallback;
+                else mergeMissing(result, militaryFallback);
+            } catch (Exception ignored) { }
+        }
+        resolvedRegistration = firstMeaningful(
+                registration, result.optString("registration"));
+        resolvedNormalized = normalizeRegistration(resolvedRegistration);
+        if (result.has("image") || resolvedNormalized.isEmpty()) return result;
         try {
             JSONObject fallback = parseWikimedia(
                     get(wikimediaUrl(resolvedRegistration, aircraftType)), resolvedNormalized);
-            if (verifiedMetadata.length() > 0) {
-                mergeMissing(fallback, verifiedMetadata);
+            if (result.length() > 0) {
+                mergeMissing(fallback, result);
                 fallback.put("metadata_verified", true);
             }
-            return fallback.length() > 0 ? fallback : verifiedMetadata;
+            return fallback.length() > 0 ? fallback : result;
         } catch (Exception ignored) {
-            return verifiedMetadata;
+            return result;
         }
+    }
+
+    static JSONObject parseAdsbNlSearch(String json, String expectedHex,
+                                         String expectedRegistration) throws Exception {
+        String html = new JSONObject(json).optString("msg", "");
+        String hex = normalizeHex(expectedHex);
+        if (!hex.isEmpty() && !Pattern.compile("(?is)>\\s*" + Pattern.quote(hex)
+                + "\\s*</div>").matcher(html).find()) return new JSONObject();
+        Matcher registrationLink = Pattern.compile(
+                "(?is)aircraft\\.php\\?id_aircraft=(\\d+)[^>]*>([^<]+)</a>")
+                .matcher(html);
+        if (!registrationLink.find()) return new JSONObject();
+        String registration = cleanHtml(registrationLink.group(2));
+        String expected = normalizeRegistration(expectedRegistration);
+        if (!expected.isEmpty() && !normalizeRegistration(registration).equals(expected)) {
+            return new JSONObject();
+        }
+        JSONObject result = new JSONObject()
+                .put("_adsb_nl_id", registrationLink.group(1));
+        putIfText(result, "registration", registration);
+        Matcher operator = Pattern.compile(
+                "(?is)<img[^>]+title=['\"]([^'\"]+)['\"][^>]*>").matcher(html);
+        if (operator.find()) putIfText(result, "operator", cleanHtml(operator.group(1)));
+        Matcher type = Pattern.compile(
+                "(?is)checktype=[^'\"]+['\"][^>]*>([^<]+)</a>").matcher(html);
+        if (type.find()) putIfText(result, "type", cleanHtml(type.group(1)));
+        copyOperatorToAirline(result);
+        result.put("metadata_source", "ADS-B.nl");
+        return result;
+    }
+
+    static JSONObject parseAdsbNlDetail(String html, String expectedHex,
+                                         String expectedRegistration) throws Exception {
+        String registration = labelledDivValue(html, "REGISTRATION");
+        String icao = labelledDivValue(html, "ICAO (ID-AIRCRAFT)")
+                .replaceFirst("\\s*\\(.*$", "").trim();
+        String expected = normalizeRegistration(expectedRegistration);
+        String normalizedExpectedHex = normalizeHex(expectedHex);
+        if ((!normalizedExpectedHex.isEmpty()
+                && !normalizedExpectedHex.equals(normalizeHex(icao)))
+                || (!expected.isEmpty()
+                && !normalizeRegistration(registration).equals(expected))) {
+            return new JSONObject();
+        }
+        String model = labelledDivValue(html, "AIRCRAFT MODEL");
+        Matcher split = Pattern.compile("^([^()]*)\\(([^()]*)\\)").matcher(model);
+        JSONObject result = new JSONObject();
+        putIfText(result, "registration", registration);
+        if (split.find()) {
+            putIfText(result, "type", split.group(1));
+            putIfText(result, "description",
+                    split.group(2).trim().toUpperCase(Locale.US));
+        } else {
+            putIfText(result, "type", model);
+        }
+        result.put("metadata_source", "ADS-B.nl");
+        return result;
+    }
+
+    private static JSONObject findAdsbNl(String hex, String registration) throws Exception {
+        if (hex.isEmpty() && normalizeRegistration(registration).isEmpty()) {
+            return new JSONObject();
+        }
+        String form = "reg=" + formValue(hex.isEmpty() ? registration : "")
+                + "&type=&icao=" + formValue(hex) + "&call=";
+        JSONObject search = parseAdsbNlSearch(post(
+                "https://www.ads-b.nl/search/ajaxform.php", form), hex, registration);
+        String detailId = search.optString("_adsb_nl_id", "");
+        search.remove("_adsb_nl_id");
+        if (detailId.isEmpty()) return search;
+        JSONObject detail = parseAdsbNlDetail(get(
+                "https://www.ads-b.nl/aircraft.php?id_aircraft=" + detailId),
+                hex, firstMeaningful(registration, search.optString("registration")));
+        mergeMissing(search, detail);
+        return search;
+    }
+
+    private static boolean needsAircraftDatabaseFallback(JSONObject result) {
+        return result == null || !AircraftData.meaningful(result.opt("registration"))
+                || !AircraftData.meaningful(result.opt("operator"))
+                || !AircraftData.meaningful(result.opt("description"));
+    }
+
+    private static String labelledDivValue(String html, String label) {
+        Matcher matcher = Pattern.compile("(?is)>\\s*" + Pattern.quote(label)
+                + "\\s*</div>\\s*<div[^>]*>(.*?)</div>").matcher(
+                html == null ? "" : html);
+        return matcher.find() ? cleanHtml(matcher.group(1)) : "";
     }
 
     static JSONObject parsePlanespotters(String json, String normalizedRegistration)
@@ -355,8 +447,42 @@ final class AircraftPhotoLookup {
         }
     }
 
+    private static String post(String endpoint, String form) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
+        try {
+            connection.setConnectTimeout(8_000);
+            connection.setReadTimeout(12_000);
+            connection.setRequestMethod("POST");
+            connection.setDoOutput(true);
+            connection.setRequestProperty("User-Agent", USER_AGENT);
+            connection.setRequestProperty("Accept-Encoding", "gzip");
+            connection.setRequestProperty("Content-Type",
+                    "application/x-www-form-urlencoded; charset=UTF-8");
+            try (OutputStream output = connection.getOutputStream()) {
+                output.write(form.getBytes("UTF-8"));
+            }
+            if (connection.getResponseCode() != 200) return "";
+            InputStream stream = connection.getInputStream();
+            if ("gzip".equalsIgnoreCase(connection.getContentEncoding())) {
+                stream = new GZIPInputStream(stream);
+            }
+            StringBuilder result = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream))) {
+                String line;
+                while ((line = reader.readLine()) != null) result.append(line).append('\n');
+            }
+            return result.toString();
+        } finally {
+            connection.disconnect();
+        }
+    }
+
     private static String path(String value) throws Exception {
         return URLEncoder.encode(value.trim(), "UTF-8").replace("+", "%20");
+    }
+
+    private static String formValue(String value) throws Exception {
+        return URLEncoder.encode(value == null ? "" : value.trim(), "UTF-8");
     }
 
     private static String normalizeRegistration(String value) {

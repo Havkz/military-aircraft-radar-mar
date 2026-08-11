@@ -67,10 +67,11 @@ The Android map loads Leaflet 1.9.4 from unpkg and requests standard OpenStreetM
 
 ## Aircraft photos and registration metadata
 
-When a user selects an aircraft that has a registration, MAR requests a registration-specific photo result from the public Planespotters.net photo endpoint and may query the matching Planespotting.be registration page as a fallback and metadata supplement. A returned thumbnail is displayed remotely in the infoblock with its source and photographer credit; it is not bundled with or republished by MAR. Verified registration-bound fields such as operator, aircraft type, MSN, and status may fill otherwise missing live-data fields, but never replace an existing value. General web or Wikimedia fallback images are not treated as aircraft-metadata sources. External data can be stale, incomplete, or incorrect. MAR performs no bulk photo or fleet-database download. Their names, photographs, databases, and trademarks remain the property of their respective owners. No affiliation, sponsorship, or endorsement is claimed.
+When a user selects an aircraft, MAR requests an identifier-specific photo result from the public Planespotters.net photo endpoint and may query the matching Planespotting.be registration page as a fallback and metadata supplement. When fields remain missing, MAR may query ADS-B.nl by the aircraft's exact ICAO/Mode-S hex code or registration/serial. A returned thumbnail is displayed remotely in the infoblock with its source and photographer credit; it is not bundled with or republished by MAR. Verified identifier-bound fields such as registration, operator, aircraft type, description, MSN, and status may fill otherwise missing live-data fields, but never replace an existing value. General web or Wikimedia fallback images are not treated as aircraft-metadata sources. External data can be stale, incomplete, or incorrect. MAR performs no bulk photo or fleet-database download. Their names, photographs, databases, and trademarks remain the property of their respective owners. No affiliation, sponsorship, or endorsement is claimed.
 
 - Planespotters.net: https://www.planespotters.net/
 - Planespotting.be: https://www.planespotting.be/
+- ADS-B.nl: https://www.ads-b.nl/
 
 ## Map design and local features
 
@@ -85,7 +86,7 @@ For a selected aircraft, MAR can inspect a 30-day window of publicly available A
 
 ## Trademarks and independence
 
-ADSB.lol, Airplanes.live, Flightradar24, ADS-B Exchange, OpenStreetMap, Leaflet, Planespotters.net, Planespotting.be, Apple, Android, Google, and all other product or service names are the property of their respective owners. Their appearance in MAR is descriptive and does not imply affiliation or endorsement.
+ADSB.lol, Airplanes.live, ADS-B.nl, Flightradar24, ADS-B Exchange, OpenStreetMap, Leaflet, Planespotters.net, Planespotting.be, Apple, Android, Google, and all other product or service names are the property of their respective owners. Their appearance in MAR is descriptive and does not imply affiliation or endorsement.
 
 ## Safety
 

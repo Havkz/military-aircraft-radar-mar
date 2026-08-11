@@ -22,7 +22,7 @@ When the Android map tab is first opened, its WebView loads Leaflet 1.9.4 from t
 
 When the user chooses to open an aircraft in Flightradar24 or ADS-B Exchange, Android opens the selected service's app or website with aircraft-identifying or map-position information in the link. Those services process data under their own terms and privacy policies.
 
-When the user selects an aircraft with a registration, Android sends that registration and, when available, its known type to Planespotters.net and Planespotting.be to obtain a registration-specific thumbnail and missing aircraft metadata such as operator, type, MSN, or status. Loading the returned remote thumbnail also exposes normal network metadata and the IP address to its image host. Results are kept only in the current in-memory map session and ordinary WebView/network cache; MAR does not bulk-download either service's photo or fleet database. The separate outbound photo-search links send the same registration when explicitly opened.
+When the user selects an aircraft, Android sends its ICAO/Mode-S hex code and, when available, registration and known type to Planespotters.net and Planespotting.be to obtain an identifier-specific thumbnail and missing aircraft metadata. If fields remain missing, Android may send the exact hex code or registration/serial to ADS-B.nl to obtain identifier-bound metadata such as registration, operator, type, or description. Loading a returned remote thumbnail also exposes normal network metadata and the IP address to its image host. Results are kept only in the current in-memory map session and ordinary WebView/network cache; MAR does not bulk-download any service's photo or fleet database. The separate outbound photo-search links send the same registration when explicitly opened.
 
 Official provider information:
 
@@ -36,6 +36,7 @@ Official provider information:
 - ADS-B Exchange / JETNET Terms of Use: https://www.jetnet.com/legal/terms-of-use
 - Planespotters.net: https://www.planespotters.net/
 - Planespotting.be: https://www.planespotting.be/
+- ADS-B.nl: https://www.ads-b.nl/
 
 ## Permissions
 
