@@ -24,6 +24,8 @@ final class AppPreferences {
             "squawk_airplanes_last_attempt_ms";
     static final String KEY_SQUAWK_ADSBX_LAST_ATTEMPT_MS =
             "squawk_adsbx_last_attempt_ms";
+    static final String KEY_SQUAWK_ACTIVE_EVENTS = "squawk_active_events";
+    static final String KEY_SQUAWK_ACKNOWLEDGED_EVENTS = "squawk_acknowledged_events";
     // Kept only for migrating the legacy detail screen; no longer exposed in settings.
     static final String KEY_TRACKER = "tracker";
     static final String KEY_RUNNING = "service_running";

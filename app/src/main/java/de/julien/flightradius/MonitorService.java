@@ -55,6 +55,8 @@ public class MonitorService extends Service implements LocationListener {
     static final String ACTION_STOP = "de.julien.flightradius.STOP";
     private static final String ACTION_NOTIFICATION_DISMISSED =
             "de.julien.flightradius.NOTIFICATION_DISMISSED";
+    private static final String ACTION_SQUAWK_NOTIFICATION_DISMISSED =
+            "de.julien.flightradius.SQUAWK_NOTIFICATION_DISMISSED";
     static final String ACTION_RADIUS_CHANGED = "de.julien.flightradius.RADIUS_CHANGED";
     static final String ACTION_SOURCES_CHANGED = "de.julien.flightradius.SOURCES_CHANGED";
     static final String ACTION_VIEWPORT_CHANGED = "de.julien.flightradius.VIEWPORT_CHANGED";
@@ -91,6 +93,9 @@ public class MonitorService extends Service implements LocationListener {
     private static final long NOTIFICATION_ENTRY_GRACE_MS = 2 * 60_000L;
     private final Map<String, Long> notifiedInsideLastSeen = new HashMap<>();
     private final Map<String, Long> activeGlobalSquawks = new HashMap<>();
+    private final Map<String, Integer> missingGlobalSquawkPolls = new HashMap<>();
+    private final Set<String> acknowledgedGlobalSquawks = new HashSet<>();
+    private final Object globalSquawkStateLock = new Object();
     private final Map<String, JSONObject> sessionHistory = new LinkedHashMap<>();
     private final Map<String, Double> geoidOffsetFeet = new HashMap<>();
     private final Set<Integer> aircraftNotificationIds = Collections.newSetFromMap(
@@ -307,6 +312,7 @@ public class MonitorService extends Service implements LocationListener {
             latestOwnLongitude = longitude;
         }
         loadSessionHistory();
+        loadGlobalSquawkState();
         if (hasLocationPermission()) {
             registerProvider(LocationManager.GPS_PROVIDER);
             registerProvider(LocationManager.NETWORK_PROVIDER);
@@ -329,6 +335,18 @@ public class MonitorService extends Service implements LocationListener {
             stopSelf();
             return START_NOT_STICKY;
         }
+        if (intent != null && ACTION_SQUAWK_NOTIFICATION_DISMISSED.equals(
+                intent.getAction())) {
+            String eventKey = intent.getStringExtra("event_key");
+            int notificationId = intent.getIntExtra("notification_id", 0);
+            if (eventKey != null && !eventKey.isEmpty()) {
+                synchronized (globalSquawkStateLock) {
+                    acknowledgedGlobalSquawks.add(eventKey);
+                    saveGlobalSquawkStateLocked();
+                }
+            }
+            if (notificationId != 0) aircraftNotificationIds.remove(notificationId);
+        }
         if (intent != null && ACTION_NOTIFICATION_DISMISSED.equals(intent.getAction())) {
             String hex = intent.getStringExtra("hex");
             if (hex != null && !hex.isEmpty()) {
@@ -338,6 +356,9 @@ public class MonitorService extends Service implements LocationListener {
         }
         boolean viewportChanged = intent != null
                 && ACTION_VIEWPORT_CHANGED.equals(intent.getAction());
+        if (intent != null && ACTION_SOURCES_CHANGED.equals(intent.getAction())) {
+            pruneUnconfiguredGlobalSquawkEvents();
+        }
         if (viewportChanged && pollingScheduled && immediateMapExecutor != null) {
             requestImmediateMapAircraft();
         }
@@ -438,6 +459,7 @@ public class MonitorService extends Service implements LocationListener {
             aircraftNotificationIds.clear();
             notificationManager.cancel(STATUS_NOTIFICATION_ID);
             stopForeground(STOP_FOREGROUND_REMOVE);
+            clearGlobalSquawkState();
         }
         super.onDestroy();
     }
@@ -1092,7 +1114,7 @@ public class MonitorService extends Service implements LocationListener {
             stillConfigured.retainAll(configuredSquawks);
             if (!stillConfigured.isEmpty()) {
                 processGlobalSquawkAircraft(received, stillConfigured,
-                        System.currentTimeMillis(), requestedInterval);
+                        System.currentTimeMillis());
             }
         }
     }
@@ -1171,15 +1193,10 @@ public class MonitorService extends Service implements LocationListener {
     }
 
     private void processGlobalSquawkAircraft(JSONArray aircraft, Set<String> selectedSquawks,
-                                             long now, long requestedInterval) {
-        long expiry = Math.max(2 * requestedInterval, 2 * 60_000L);
-        List<String> expired = new ArrayList<>();
-        for (Map.Entry<String, Long> entry : activeGlobalSquawks.entrySet()) {
-            if (now - entry.getValue() >= expiry) expired.add(entry.getKey());
-        }
-        for (String key : expired) activeGlobalSquawks.remove(key);
+                                             long now) {
         JSONArray mapItems = new JSONArray();
         JSONArray matchingAircraft = exactSquawkAircraft(aircraft, selectedSquawks);
+        Map<String, JSONObject> currentEvents = new LinkedHashMap<>();
         for (int i = 0; i < matchingAircraft.length(); i++) {
             JSONObject plane = matchingAircraft.optJSONObject(i);
             String squawk = normalizeApiSquawk(plane.opt("squawk"));
@@ -1187,8 +1204,7 @@ public class MonitorService extends Service implements LocationListener {
                     .trim().toLowerCase(Locale.US);
             if (hex.isEmpty()) continue;
             String eventKey = squawk + ':' + hex;
-            boolean newEvent = !activeGlobalSquawks.containsKey(eventKey);
-            activeGlobalSquawks.put(eventKey, now);
+            currentEvents.put(eventKey, plane);
             double[] position = AircraftData.recentPosition(
                     plane, MAP_MAX_POSITION_AGE_SECONDS);
             double latitude = position == null ? Double.NaN : position[0];
@@ -1200,10 +1216,75 @@ public class MonitorService extends Service implements LocationListener {
                                     plane.opt("alt_baro")), latitude, longitude));
                 } catch (Exception ignored) { }
             }
-            if (newEvent) showGlobalSquawkNotification(
-                    plane, hex, squawk, latitude, longitude);
         }
+        SquawkEventChanges changes;
+        synchronized (globalSquawkStateLock) {
+            changes = reconcileGlobalSquawkEvents(activeGlobalSquawks,
+                    missingGlobalSquawkPolls, acknowledgedGlobalSquawks,
+                    currentEvents.keySet(), selectedSquawks, now);
+            saveGlobalSquawkStateLocked();
+        }
+        // Publish the matching aircraft before exposing the notification deep link.
+        // A very fast tap can then already resolve the aircraft in the map payload.
         if (mapItems.length() > 0) updateMapAircraftCache(mapItems, now);
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        for (String eventKey : changes.endedEvents) {
+            int notificationId = globalSquawkNotificationId(eventKey);
+            aircraftNotificationIds.remove(notificationId);
+            manager.cancel(notificationId);
+        }
+        for (String eventKey : changes.newEvents) {
+            JSONObject plane = currentEvents.get(eventKey);
+            if (plane == null) continue;
+            String squawk = normalizeApiSquawk(plane.opt("squawk"));
+            String hex = plane.optString("hex", "").replace("~", "")
+                    .trim().toLowerCase(Locale.US);
+            double[] position = AircraftData.recentPosition(
+                    plane, MAP_MAX_POSITION_AGE_SECONDS);
+            showGlobalSquawkNotification(plane, hex, squawk,
+                    position == null ? Double.NaN : position[0],
+                    position == null ? Double.NaN : position[1]);
+        }
+    }
+
+    static final class SquawkEventChanges {
+        final Set<String> newEvents = new HashSet<>();
+        final Set<String> endedEvents = new HashSet<>();
+    }
+
+    static SquawkEventChanges reconcileGlobalSquawkEvents(
+            Map<String, Long> active, Map<String, Integer> missingPolls,
+            Set<String> acknowledged, Set<String> current,
+            Set<String> configuredSquawks, long now) {
+        SquawkEventChanges changes = new SquawkEventChanges();
+        for (String eventKey : current) {
+            if (!active.containsKey(eventKey) && !acknowledged.contains(eventKey)) {
+                changes.newEvents.add(eventKey);
+            }
+            active.put(eventKey, now);
+            missingPolls.remove(eventKey);
+        }
+        for (String eventKey : new HashSet<>(active.keySet())) {
+            int separator = eventKey.indexOf(':');
+            String squawk = separator > 0 ? eventKey.substring(0, separator) : "";
+            boolean configured = configuredSquawks.contains(squawk);
+            if (current.contains(eventKey)) continue;
+            int misses = configured ? missingPolls.getOrDefault(eventKey, 0) + 1 : 2;
+            if (misses < 2) {
+                missingPolls.put(eventKey, misses);
+                continue;
+            }
+            active.remove(eventKey);
+            missingPolls.remove(eventKey);
+            acknowledged.remove(eventKey);
+            changes.endedEvents.add(eventKey);
+        }
+        acknowledged.retainAll(active.keySet());
+        return changes;
+    }
+
+    static int globalSquawkNotificationId(String eventKey) {
+        return ("global-squawk:" + eventKey).hashCode();
     }
 
     private void showGlobalSquawkNotification(JSONObject aircraft, String hex,
@@ -1219,9 +1300,19 @@ public class MonitorService extends Service implements LocationListener {
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra("open_map", true).putExtra("callsign", callsign)
                 .putExtra("hex", hex).putExtra("lat", latitude).putExtra("lon", longitude);
-        int notificationId = ("global-squawk:" + squawk + ':' + hex).hashCode();
+        String eventKey = squawk + ':' + hex;
+        int notificationId = globalSquawkNotificationId(eventKey);
         PendingIntent tracker = PendingIntent.getActivity(this,
                 notificationId ^ 0x5351574b, openMap,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        Intent dismissedIntent = new Intent(this, MonitorService.class)
+                .setAction(ACTION_SQUAWK_NOTIFICATION_DISMISSED)
+                .setData(android.net.Uri.parse("mar://dismiss-squawk/"
+                        + android.net.Uri.encode(eventKey)))
+                .putExtra("event_key", eventKey)
+                .putExtra("notification_id", notificationId);
+        PendingIntent dismissed = PendingIntent.getService(this,
+                notificationId ^ 0x4d415253, dismissedIntent,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification notification = new Notification.Builder(this, CHANNEL_ALERTS)
                 .setSmallIcon(R.drawable.ic_notification_radar)
@@ -1232,11 +1323,84 @@ public class MonitorService extends Service implements LocationListener {
                 .setColor(MARColors.RED)
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setContentIntent(tracker)
-                .setAutoCancel(true)
+                .setDeleteIntent(dismissed)
+                .setAutoCancel(false)
                 .setOnlyAlertOnce(true)
                 .build();
         aircraftNotificationIds.add(notificationId);
         getSystemService(NotificationManager.class).notify(notificationId, notification);
+    }
+
+    private void loadGlobalSquawkState() {
+        long cutoff = System.currentTimeMillis() - 3 * 60_000L;
+        android.content.SharedPreferences preferences = AppPreferences.get(this);
+        synchronized (globalSquawkStateLock) {
+            activeGlobalSquawks.clear();
+            acknowledgedGlobalSquawks.clear();
+            try {
+                JSONObject stored = new JSONObject(preferences.getString(
+                        AppPreferences.KEY_SQUAWK_ACTIVE_EVENTS, "{}"));
+                java.util.Iterator<String> keys = stored.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    long lastSeen = stored.optLong(key, 0L);
+                    if (lastSeen >= cutoff) activeGlobalSquawks.put(key, lastSeen);
+                }
+                JSONArray acknowledged = new JSONArray(preferences.getString(
+                        AppPreferences.KEY_SQUAWK_ACKNOWLEDGED_EVENTS, "[]"));
+                for (int i = 0; i < acknowledged.length(); i++) {
+                    String key = acknowledged.optString(i, "");
+                    if (activeGlobalSquawks.containsKey(key)) {
+                        acknowledgedGlobalSquawks.add(key);
+                    }
+                }
+            } catch (Exception ignored) { }
+        }
+    }
+
+    private void saveGlobalSquawkStateLocked() {
+        JSONObject active = new JSONObject();
+        JSONArray acknowledged = new JSONArray();
+        try {
+            for (Map.Entry<String, Long> event : activeGlobalSquawks.entrySet()) {
+                active.put(event.getKey(), event.getValue());
+            }
+            for (String eventKey : acknowledgedGlobalSquawks) {
+                acknowledged.put(eventKey);
+            }
+        } catch (Exception ignored) { }
+        AppPreferences.get(this).edit()
+                .putString(AppPreferences.KEY_SQUAWK_ACTIVE_EVENTS, active.toString())
+                .putString(AppPreferences.KEY_SQUAWK_ACKNOWLEDGED_EVENTS,
+                        acknowledged.toString()).apply();
+    }
+
+    private void clearGlobalSquawkState() {
+        synchronized (globalSquawkStateLock) {
+            activeGlobalSquawks.clear();
+            missingGlobalSquawkPolls.clear();
+            acknowledgedGlobalSquawks.clear();
+            AppPreferences.get(this).edit()
+                    .remove(AppPreferences.KEY_SQUAWK_ACTIVE_EVENTS)
+                    .remove(AppPreferences.KEY_SQUAWK_ACKNOWLEDGED_EVENTS).apply();
+        }
+    }
+
+    private void pruneUnconfiguredGlobalSquawkEvents() {
+        Set<String> configured = new HashSet<>(CustomAlertRules.customSquawks(this));
+        SquawkEventChanges changes;
+        synchronized (globalSquawkStateLock) {
+            changes = reconcileGlobalSquawkEvents(activeGlobalSquawks,
+                    missingGlobalSquawkPolls, acknowledgedGlobalSquawks,
+                    Collections.emptySet(), configured, System.currentTimeMillis());
+            saveGlobalSquawkStateLocked();
+        }
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        for (String eventKey : changes.endedEvents) {
+            int notificationId = globalSquawkNotificationId(eventKey);
+            aircraftNotificationIds.remove(notificationId);
+            manager.cancel(notificationId);
+        }
     }
 
     static String globalSquawkNotificationDetails(JSONObject aircraft) {
