@@ -654,6 +654,8 @@ final class SettingsPanel extends ScrollView {
                 "https://airplanes.live/api-guide/");
         addLegalLink(legal, "Airplanes.live Terms of Use",
                 "https://airplanes.live/terms-of-use/");
+        addLegalLink(legal, "ADSBDB route and airline data",
+                "https://www.adsbdb.com/");
         addLegalLink(legal, "OpenStreetMap tile policy",
                 "https://operations.osmfoundation.org/policies/tiles/");
         addLegalLink(legal, "Leaflet BSD 2-Clause License",

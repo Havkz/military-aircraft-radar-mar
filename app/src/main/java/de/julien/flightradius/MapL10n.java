@@ -84,7 +84,7 @@ final class MapL10n {
             {"remove", "Remove"},
             {"save", "Save"},
             {"key_error", "Could not store API key"},
-            {"provider_notice", "MAR combines ADSB.lol and Airplanes.live. ADS-B Exchange is queried only with an official API key you provide. No provider affiliation or endorsement."},
+            {"provider_notice", "MAR combines ADSB.lol and Airplanes.live, optionally ADS-B Exchange, and ADSBDB for selected-aircraft route lookups. ADS-B Exchange is queried only with an official API key you provide. No provider affiliation or endorsement."},
             {"photos", "Photos"},
             {"aircraft_data", "Aircraft data"},
             {"altitude_details", "Altitude"},

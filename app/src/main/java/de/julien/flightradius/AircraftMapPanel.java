@@ -27,6 +27,7 @@ final class AircraftMapPanel extends FrameLayout {
     private final ExecutorService photoExecutor = Executors.newFixedThreadPool(2);
     private final ExecutorService traceExecutor = Executors.newFixedThreadPool(2);
     private final ExecutorService destinationExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService routeExecutor = Executors.newSingleThreadExecutor();
     private boolean ready;
     private boolean pendingRefresh;
     private boolean pageVisible;
@@ -51,7 +52,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.43 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.44 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
@@ -244,6 +245,21 @@ final class AircraftMapPanel extends FrameLayout {
                 });
             });
         }
+
+        @JavascriptInterface public void requestAircraftRoute(
+                String hex, String callsign, double latitude, double longitude) {
+            routeExecutor.submit(() -> {
+                JSONObject result = AircraftRouteLookup.find(
+                        host, callsign, latitude, longitude);
+                String script = "window.marRouteResult&&window.marRouteResult("
+                        + JSONObject.quote(hex == null ? "" : hex) + ","
+                        + JSONObject.quote(callsign == null ? "" : callsign) + ","
+                        + result.toString() + ")";
+                host.runOnUiThread(() -> {
+                    if (ready) webView.evaluateJavascript(script, null);
+                });
+            });
+        }
     }
 
     void destroy() {
@@ -253,6 +269,7 @@ final class AircraftMapPanel extends FrameLayout {
         photoExecutor.shutdownNow();
         traceExecutor.shutdownNow();
         destinationExecutor.shutdownNow();
+        routeExecutor.shutdownNow();
         webView.stopLoading();
         webView.destroy();
     }

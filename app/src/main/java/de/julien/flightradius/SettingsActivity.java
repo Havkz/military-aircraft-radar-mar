@@ -246,6 +246,8 @@ public class SettingsActivity extends Activity {
         legal.addView(trackers);
         addLegalLink(legal, "ADSB.lol API / ODbL 1.0",
                 "https://www.adsb.lol/docs/open-data/api/");
+        addLegalLink(legal, "ADSBDB route and airline data",
+                "https://www.adsbdb.com/");
         addLegalLink(legal, "Flightradar24 Terms",
                 "https://www.flightradar24.com/terms-of-service");
         addLegalLink(legal, "ADS-B Exchange Terms",

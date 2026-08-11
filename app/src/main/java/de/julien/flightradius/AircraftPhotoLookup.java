@@ -16,7 +16,7 @@ import java.util.zip.GZIPInputStream;
 
 final class AircraftPhotoLookup {
     private static final String USER_AGENT =
-            "MilitaryAircraftRadar/1.2.43 (+https://github.com/Havkz/military-aircraft-radar-mar)";
+            "MilitaryAircraftRadar/1.2.44 (+https://github.com/Havkz/military-aircraft-radar-mar)";
 
     private AircraftPhotoLookup() { }
 
