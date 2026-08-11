@@ -53,7 +53,7 @@ final class L10n {
             case "vibration": return "Vibrate for new contact";
             case "information": return "INFORMATION";
             case "legal": return "LEGAL & DATA SOURCES";
-            case "legal_data": return "Contains information from ADSB.lol, Airplanes.live, optionally ADS-B Exchange, and callsign route or airline data from ADSBDB. Registration countries may be inferred from ICAO 24-bit state allocations and can differ from the operator or current base. Routes are plausibility-checked against the live aircraft position but may still be incomplete or inaccurate. Data is provided as-is.";
+            case "legal_data": return "Contains information from ADSB.lol, Airplanes.live, optionally ADS-B Exchange, and callsign route or airline data from ADSB.lol VRS standing data and ADSBDB. Registration countries may be inferred from ICAO 24-bit state allocations and can differ from the operator or current base. Routes are plausibility-checked against the live aircraft position and direction but may still be incomplete or inaccurate. Data is provided as-is.";
             case "legal_trackers": return "Flightradar24 and ADS-B Exchange are independent third-party services used only as optional outbound destinations. MAR is not affiliated with or endorsed by them and does not retrieve or redistribute their data. All names and trademarks belong to their respective owners.";
             case "live_aircraft": return "LIVE AIRCRAFT";
             case "session_aircraft": return "SESSION AIRCRAFT";

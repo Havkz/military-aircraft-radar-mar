@@ -22,6 +22,7 @@ final class MapPreferences {
     static final String HISTORIC_TRACK_UTC = "map_historic_track_utc";
     static final String ALTITUDE_CHART = "map_altitude_chart";
     static final String AUTO_SELECT = "map_auto_select";
+    static final String ROUTE_AIRPORT_CODES = "map_route_airport_codes";
     static final String GROUND_VEHICLES = "map_ground_vehicles";
     static final String NON_ICAO = "map_non_icao";
     static final String UPDATE_GPS = "map_update_gps";
@@ -37,7 +38,8 @@ final class MapPreferences {
             GEOMETRIC_ALTITUDE, EGM_CONVERSION, QNH_CORRECTION,
             TRACK_UTC, HISTORIC_TRACK_UTC,
             "map_last_leg_only", ALTITUDE_CHART, "map_infoblock", "map_wide_infoblock",
-            "map_hover_infoblock", AUTO_SELECT, "map_pictures_planespotters",
+            "map_hover_infoblock", AUTO_SELECT, ROUTE_AIRPORT_CODES,
+            "map_pictures_planespotters",
             "map_pictures_planespotting",
             GROUND_VEHICLES, NON_ICAO, UPDATE_GPS, INCLUDE_FILTERS_URL,
             KEEP_FADED, DEBUG_TRACKS, DEBUG_TRACK_TIMESTAMPS,
@@ -69,6 +71,8 @@ final class MapPreferences {
                     preferences.getBoolean(HISTORIC_TRACK_UTC, legacyTrackUtc));
             result.put("altitudeChart", preferences.getBoolean(ALTITUDE_CHART, true));
             result.put("autoSelect", preferences.getBoolean(AUTO_SELECT, false));
+            result.put("routeAirportCodes",
+                    preferences.getBoolean(ROUTE_AIRPORT_CODES, false));
             result.put("groundVehicles", preferences.getBoolean(GROUND_VEHICLES, true));
             result.put("nonIcao", preferences.getBoolean(NON_ICAO, true));
             result.put("updateGps", preferences.getBoolean(UPDATE_GPS, true));

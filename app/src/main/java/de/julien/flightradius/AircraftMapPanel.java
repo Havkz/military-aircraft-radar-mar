@@ -52,7 +52,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.44 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.45 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
@@ -247,10 +247,11 @@ final class AircraftMapPanel extends FrameLayout {
         }
 
         @JavascriptInterface public void requestAircraftRoute(
-                String hex, String callsign, double latitude, double longitude) {
+                String hex, String callsign, double latitude, double longitude,
+                double track, double speedKnots) {
             routeExecutor.submit(() -> {
                 JSONObject result = AircraftRouteLookup.find(
-                        host, callsign, latitude, longitude);
+                        host, callsign, latitude, longitude, track, speedKnots);
                 String script = "window.marRouteResult&&window.marRouteResult("
                         + JSONObject.quote(hex == null ? "" : hex) + ","
                         + JSONObject.quote(callsign == null ? "" : callsign) + ","

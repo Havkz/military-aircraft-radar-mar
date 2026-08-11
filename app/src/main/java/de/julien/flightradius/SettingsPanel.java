@@ -329,6 +329,8 @@ final class SettingsPanel extends ScrollView {
         section(root, MapL10n.t(host, "info_panel"));
         addMapSwitch(root, MapL10n.t(host, "auto_select"),
                 MapPreferences.AUTO_SELECT, false);
+        addMapSwitch(root, MapL10n.t(host, "route_airport_codes"),
+                MapPreferences.ROUTE_AIRPORT_CODES, false);
 
         section(root, MapL10n.t(host, "traffic_privacy"));
         addMapSwitch(root, MapL10n.t(host, "ground_vehicles"),
@@ -656,6 +658,8 @@ final class SettingsPanel extends ScrollView {
                 "https://airplanes.live/terms-of-use/");
         addLegalLink(legal, "ADSBDB route and airline data",
                 "https://www.adsbdb.com/");
+        addLegalLink(legal, "VRS standing route data",
+                "https://github.com/vradarserver/standing-data");
         addLegalLink(legal, "OpenStreetMap tile policy",
                 "https://operations.osmfoundation.org/policies/tiles/");
         addLegalLink(legal, "Leaflet BSD 2-Clause License",
