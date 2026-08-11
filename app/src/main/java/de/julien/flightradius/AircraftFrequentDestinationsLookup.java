@@ -31,19 +31,20 @@ import java.util.zip.GZIPInputStream;
 
 final class AircraftFrequentDestinationsLookup {
     private static final int HISTORY_DAYS = 30;
+    static final int MIN_DESTINATION_LANDINGS = 6;
+    static final int MAX_DESTINATIONS = 5;
     private static final long CACHE_MS = 24 * 60 * 60_000L;
     private static final String HOST = "https://globe.airplanes.live";
     private static final String USER_AGENT = "Mozilla/5.0 (Linux; Android) "
-            + "MilitaryAircraftRadar/1.2.36";
+            + "MilitaryAircraftRadar/1.2.37";
 
     private AircraftFrequentDestinationsLookup() { }
 
     static JSONObject find(Context context, String rawHex) {
         String hex = normalizeHex(rawHex);
         if (hex.isEmpty()) return empty();
-        // v2 invalidates empty results produced while the packaged airport asset was opened
-        // under its pre-aapt2 .gz filename.
-        File cache = new File(context.getCacheDir(), "destinations-v2-" + hex + ".json");
+        // v3 applies the minimum-six-landings and maximum-five-results policy to cached data.
+        File cache = new File(context.getCacheDir(), "destinations-v3-" + hex + ".json");
         if (cache.isFile() && System.currentTimeMillis() - cache.lastModified() < CACHE_MS) {
             try { return new JSONObject(read(new FileInputStream(cache))); }
             catch (Exception ignored) { }
@@ -97,8 +98,9 @@ final class AircraftFrequentDestinationsLookup {
         Collections.sort(ranked, Comparator.comparingInt((Destination d) -> d.count)
                 .reversed().thenComparing(d -> d.airport.city));
         JSONArray destinations = new JSONArray();
-        for (int i = 0; i < Math.min(8, ranked.size()); i++) {
+        for (int i = 0; i < ranked.size() && destinations.length() < MAX_DESTINATIONS; i++) {
             Destination destination = ranked.get(i);
+            if (destination.count < MIN_DESTINATION_LANDINGS) break;
             try {
                 destinations.put(new JSONObject()
                         .put("city", destination.airport.city)
