@@ -10,7 +10,7 @@ ADSB.lol is MAR's aircraft-data provider. Its official API documentation states 
 
 MAR uses ADSB.lol's nearby-aircraft and military endpoints, merges the responses on the device, and does not operate or publish a separate aircraft-data service.
 
-When worldwide squawk notifications are enabled, MAR also uses ADSB.lol's documented global squawk endpoint at the user-selected one- or five-minute interval.
+When worldwide squawk notifications are configured, MAR also uses ADSB.lol's documented global squawk endpoint once per minute. The user may store any number of valid four-digit octal codes. MAR combines codes in each request, splits unusually large lists into rate-limited batches, and locally verifies every returned code before notifying.
 
 MAR treats the aircraft information shown in the app as output produced from the ADSB.lol database and includes the following attribution in the application and project documentation:
 
@@ -36,7 +36,7 @@ Any future use of Flightradar24 content or automated access would require a new 
 
 Android requests Airplanes.live's documented nearby-aircraft API directly. The free plan is limited to 500 requests per day and is described as non-commercial with no service-level agreement. MAR therefore defaults this source to one request every 180 seconds. A separate 1.2-second Business-rate option is disabled by default, carries an explicit warning, and is intended only for users whose account or IP Airplanes.live has authorized for that rate. The request area expands to the documented 250 NM endpoint maximum only while the map tab is visible; this does not change notification eligibility. Data is merged and deduplicated locally and is not republished as a separate database.
 
-Airplanes.live also documents a global squawk endpoint. It accepts one squawk value per request, so MAR sends separate requests for the three-code emergency preset. On the Free plan, nearby and squawk polling are spaced to remain within the shared 500-request daily allowance; consequently, Airplanes.live may check later than the selected one- or five-minute interval. The authorized Business-rate option follows the selected interval.
+Airplanes.live also documents a global squawk endpoint. MAR uses it only when the primary worldwide request fails. On the Free plan, nearby and fallback squawk polling are spaced to remain within the shared 500-request daily allowance; consequently, this fallback can run later than the fixed one-minute primary check. An explicitly authorized Business-rate option permits the fallback to follow the one-minute check schedule.
 
 - API guide: https://airplanes.live/api-guide/
 - API plans: https://airplanes.live/api/
@@ -47,7 +47,7 @@ Airplanes.live also documents a global squawk endpoint. It accepts one squawk va
 
 MAR never scrapes ADS-B Exchange. Android can query its official API only after the user supplies their own valid API key; otherwise ADS-B Exchange is used solely as an outbound aircraft-page destination. Responses are cached briefly on-device for the live map and alerts and are not published as a separate database.
 
-With a configured official key, worldwide squawk notifications use ADS-B Exchange's documented `sqk` endpoint at the selected interval.
+With a configured official key, worldwide squawk notifications can use ADS-B Exchange's documented `sqk` endpoint as a fallback after a failed ADSB.lol request.
 
 The full plain-text name “ADS-B Exchange” is used only to identify the optional external destination. MAR does not use the ADS-B Exchange logo and does not claim affiliation, partnership, sponsorship, or endorsement.
 

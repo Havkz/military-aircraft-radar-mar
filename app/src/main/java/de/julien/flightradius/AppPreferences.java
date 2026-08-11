@@ -16,6 +16,7 @@ final class AppPreferences {
     static final String KEY_ALERT_RULES = "custom_alert_rules";
     static final String KEY_SQUAWK_ALERT_MODE = "squawk_alert_mode";
     static final String KEY_SQUAWK_CUSTOM_CODE = "squawk_custom_code";
+    static final String KEY_SQUAWK_CUSTOM_CODES = "squawk_custom_codes";
     static final String KEY_SQUAWK_ALERT_INTERVAL_MINUTES = "squawk_alert_interval_minutes";
     static final String KEY_SQUAWK_ADSB_LOL_LAST_ATTEMPT_MS =
             "squawk_adsb_lol_last_attempt_ms";

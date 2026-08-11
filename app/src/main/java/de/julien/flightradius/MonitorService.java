@@ -63,6 +63,7 @@ public class MonitorService extends Service implements LocationListener {
     private static final long AIRPLANES_REFRESH_MS = 180_000L;
     private static final long AIRPLANES_BUSINESS_REFRESH_MS = 1_200L;
     private static final long ADSBX_REFRESH_MS = 30_000L;
+    private static final int SQUAWK_CODES_PER_REQUEST = 500;
     private static final long MAP_AIRCRAFT_CACHE_MS = 2 * 60_000L;
     private static final int MAX_MAP_CACHE_AIRCRAFT = 10_000;
     private static final double MAP_MAX_POSITION_AGE_SECONDS = 210d;
@@ -101,7 +102,9 @@ public class MonitorService extends Service implements LocationListener {
     private Handler worker;
     private ExecutorService networkPool;
     private ExecutorService immediateMapExecutor;
+    private ExecutorService squawkExecutor;
     private volatile Future<?> immediateMapFuture;
+    private volatile Future<?> squawkFuture;
     private final Object globeRequestLock = new Object();
     private volatile long lastGlobeRequestStartedMs;
     private volatile String globeSessionCookie = "";
@@ -297,6 +300,7 @@ public class MonitorService extends Service implements LocationListener {
         }
         networkPool = Executors.newFixedThreadPool(4);
         immediateMapExecutor = Executors.newFixedThreadPool(2);
+        squawkExecutor = Executors.newSingleThreadExecutor();
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         long storedLatitude = AppPreferences.get(this).getLong(
                 AppPreferences.KEY_OWN_LATITUDE, Double.doubleToRawLongBits(Double.NaN));
@@ -431,7 +435,9 @@ public class MonitorService extends Service implements LocationListener {
         if (workerThread != null) workerThread.quitSafely();
         if (networkPool != null) networkPool.shutdownNow();
         if (immediateMapExecutor != null) immediateMapExecutor.shutdownNow();
+        if (squawkExecutor != null) squawkExecutor.shutdownNow();
         immediateMapFuture = null;
+        squawkFuture = null;
         if (monitorWakeLock != null && monitorWakeLock.isHeld()) {
             monitorWakeLock.release();
         }
@@ -1041,8 +1047,9 @@ public class MonitorService extends Service implements LocationListener {
     }
 
     private void pollGlobalSquawkAlerts(long now) {
-        String configuredSquawk = CustomAlertRules.querySquawk(this);
-        if (configuredSquawk.isEmpty() || networkPool == null) return;
+        List<String> configuredSquawks = CustomAlertRules.customSquawks(this);
+        if (configuredSquawks.isEmpty() || squawkExecutor == null
+                || (squawkFuture != null && !squawkFuture.isDone())) return;
         int intervalMinutes = CustomAlertRules.intervalMinutes(this);
         long requestedInterval = CustomAlertRules.requestedIntervalMs(intervalMinutes);
         boolean businessRate = AppPreferences.get(this).getBoolean(
@@ -1056,13 +1063,23 @@ public class MonitorService extends Service implements LocationListener {
 
         preferences.edit().putLong(
                 AppPreferences.KEY_SQUAWK_ADSB_LOL_LAST_ATTEMPT_MS, now).apply();
-        JSONArray received = awaitOptional(networkPool.submit(() -> fetchAircraft(
-                globalSquawkEndpoint("adsb.lol", configuredSquawk),
-                null, "adsb.lol")));
+        List<String> requestedSquawks = new ArrayList<>(configuredSquawks);
+        squawkFuture = squawkExecutor.submit(() -> runGlobalSquawkAlerts(
+                requestedSquawks, requestedInterval, airplanesInterval));
+    }
+
+    private void runGlobalSquawkAlerts(List<String> configuredSquawks,
+                                       long requestedInterval, long airplanesInterval) {
+        JSONArray received = null;
+        try {
+            received = fetchGlobalSquawkBatches("adsb.lol", configuredSquawks, null);
+        } catch (Exception ignored) { }
 
         // ADSB.lol provides the documented global exact-squawk endpoint and is
         // authoritative here. Only try another source when that request failed;
         // an empty successful response correctly means that no aircraft matched.
+        long now = System.currentTimeMillis();
+        android.content.SharedPreferences preferences = AppPreferences.get(this);
         String adsbxKey = ProviderCredentials.adsbExchangeKey(this);
         long adsbxLast = preferences.getLong(
                 AppPreferences.KEY_SQUAWK_ADSBX_LAST_ATTEMPT_MS, 0L);
@@ -1070,23 +1087,47 @@ public class MonitorService extends Service implements LocationListener {
                 && providerDue(adsbxLast, requestedInterval, now)) {
             preferences.edit().putLong(
                     AppPreferences.KEY_SQUAWK_ADSBX_LAST_ATTEMPT_MS, now).apply();
-            received = awaitOptional(networkPool.submit(() -> fetchAircraft(
-                    globalSquawkEndpoint("adsbexchange", configuredSquawk),
-                    adsbxKey, "adsbexchange")));
+            try {
+                received = fetchGlobalSquawkBatches(
+                        "adsbexchange", configuredSquawks, adsbxKey);
+            } catch (Exception ignored) { }
         }
         long airplanesLast = preferences.getLong(
                 AppPreferences.KEY_SQUAWK_AIRPLANES_LAST_ATTEMPT_MS, 0L);
         if (received == null && providerDue(airplanesLast, airplanesInterval, now)) {
             preferences.edit().putLong(
                     AppPreferences.KEY_SQUAWK_AIRPLANES_LAST_ATTEMPT_MS, now).apply();
-            received = awaitOptional(networkPool.submit(() -> fetchAircraft(
-                    globalSquawkEndpoint("airplanes.live", configuredSquawk),
-                    null, "airplanes.live")));
+            try {
+                received = fetchGlobalSquawkBatches(
+                        "airplanes.live", configuredSquawks, null);
+            } catch (Exception ignored) { }
         }
         if (received != null) {
-            processGlobalSquawkAircraft(received, configuredSquawk, now,
-                    requestedInterval);
+            Set<String> stillConfigured = new HashSet<>(
+                    CustomAlertRules.customSquawks(this));
+            stillConfigured.retainAll(configuredSquawks);
+            if (!stillConfigured.isEmpty()) {
+                processGlobalSquawkAircraft(received, stillConfigured,
+                        System.currentTimeMillis(), requestedInterval);
+            }
         }
+    }
+
+    private JSONArray fetchGlobalSquawkBatches(String provider, List<String> squawks,
+                                                String apiKey) throws Exception {
+        JSONArray combined = new JSONArray();
+        for (int offset = 0; offset < squawks.size(); offset += SQUAWK_CODES_PER_REQUEST) {
+            if (offset > 0) {
+                Thread.sleep("airplanes.live".equals(provider) ? 1_200L : 1_000L);
+                if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+            }
+            int end = Math.min(squawks.size(), offset + SQUAWK_CODES_PER_REQUEST);
+            String query = android.text.TextUtils.join(",", squawks.subList(offset, end));
+            JSONArray batch = fetchAircraft(
+                    globalSquawkEndpoint(provider, query), apiKey, provider);
+            for (int i = 0; i < batch.length(); i++) combined.put(batch.opt(i));
+        }
+        return combined;
     }
 
     static boolean providerDue(long lastAttempt, long interval, long now) {
@@ -1120,6 +1161,11 @@ public class MonitorService extends Service implements LocationListener {
                 && configuredSquawk.equals(normalizeApiSquawk(aircraft.opt("squawk")));
     }
 
+    static boolean exactSquawkMatch(JSONObject aircraft, Set<String> configuredSquawks) {
+        return aircraft != null && configuredSquawks != null
+                && configuredSquawks.contains(normalizeApiSquawk(aircraft.opt("squawk")));
+    }
+
     static JSONArray exactSquawkAircraft(JSONArray aircraft, String configuredSquawk) {
         JSONArray matches = new JSONArray();
         if (aircraft == null) return matches;
@@ -1130,7 +1176,17 @@ public class MonitorService extends Service implements LocationListener {
         return matches;
     }
 
-    private void processGlobalSquawkAircraft(JSONArray aircraft, String selectedSquawk,
+    static JSONArray exactSquawkAircraft(JSONArray aircraft, Set<String> configuredSquawks) {
+        JSONArray matches = new JSONArray();
+        if (aircraft == null || configuredSquawks == null) return matches;
+        for (int i = 0; i < aircraft.length(); i++) {
+            JSONObject item = aircraft.optJSONObject(i);
+            if (exactSquawkMatch(item, configuredSquawks)) matches.put(item);
+        }
+        return matches;
+    }
+
+    private void processGlobalSquawkAircraft(JSONArray aircraft, Set<String> selectedSquawks,
                                              long now, long requestedInterval) {
         long expiry = Math.max(2 * requestedInterval, 2 * 60_000L);
         List<String> expired = new ArrayList<>();
@@ -1139,7 +1195,7 @@ public class MonitorService extends Service implements LocationListener {
         }
         for (String key : expired) activeGlobalSquawks.remove(key);
         JSONArray mapItems = new JSONArray();
-        JSONArray matchingAircraft = exactSquawkAircraft(aircraft, selectedSquawk);
+        JSONArray matchingAircraft = exactSquawkAircraft(aircraft, selectedSquawks);
         for (int i = 0; i < matchingAircraft.length(); i++) {
             JSONObject plane = matchingAircraft.optJSONObject(i);
             String squawk = normalizeApiSquawk(plane.opt("squawk"));

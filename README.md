@@ -83,6 +83,7 @@ Some aircraft may not be visible on Flightradar24. ADS-B Exchange can therefore 
 - Configurable map colors, labels, icon sizing, wind labels, WGS84/MSL and QNH altitude handling, track rendering, faded contacts, ground vehicles, non-ICAO targets, local filter URLs, registration-specific credited photos, and missing operator/type/MSN/status supplementation from verified photo records
 - Adjustable 10–300 km radius with a marked 20–30 km recommendation
 - One-second ADSB.lol refresh with automatic 429 backoff in 0.5-second steps
+- Unlimited custom worldwide squawk-code notifications checked every minute with exact local result validation
 - Continuously updated per-aircraft notifications
 - A monitoring-lifetime CPU wake lock so deep sleep cannot suspend the one-second polling schedule
 - Five-minute notification-dismissal cooldown
