@@ -73,7 +73,9 @@ public class MonitorService extends Service implements LocationListener {
     private static final long WAKE_LOCK_RENEW_MS = 9 * 60_000L;
     private static final int STATUS_NOTIFICATION_ID = 1001;
     private static final String MILITARY_ENDPOINT = "https://api.adsb.lol/v2/mil";
-    private static volatile String latestAllAircraftJson = "[]";
+    private static volatile long mapAircraftPayloadRevision;
+    private static volatile MapAircraftPayload latestMapAircraftPayload =
+            new MapAircraftPayload(0L, new String[]{"[]"}, 0);
     private static volatile double latestOwnLatitude = Double.NaN;
     private static volatile double latestOwnLongitude = Double.NaN;
     private static volatile boolean mapVisible;
@@ -119,9 +121,20 @@ public class MonitorService extends Service implements LocationListener {
     private final AdaptiveBackoff airplanesBackoff = new AdaptiveBackoff();
 
     static boolean isRunning() { return running; }
-    static synchronized String latestAllAircraftJson() {
-        latestAllAircraftJson = visibleMapAircraftCacheJson(System.currentTimeMillis()).toString();
-        return latestAllAircraftJson;
+    static MapAircraftPayload latestMapAircraftPayload() {
+        return latestMapAircraftPayload;
+    }
+
+    static final class MapAircraftPayload {
+        final long revision;
+        final String[] chunks;
+        final int aircraftCount;
+
+        MapAircraftPayload(long revision, String[] chunks, int aircraftCount) {
+            this.revision = revision;
+            this.chunks = chunks;
+            this.aircraftCount = aircraftCount;
+        }
     }
     static double latestOwnLatitude() { return latestOwnLatitude; }
     static double latestOwnLongitude() { return latestOwnLongitude; }
@@ -346,7 +359,7 @@ public class MonitorService extends Service implements LocationListener {
                 synchronized (MonitorService.class) {
                     if (generation != mapViewportGeneration) return;
                     updateMapAircraftCache(compact, receivedAt);
-                    latestAllAircraftJson = visibleMapAircraftCacheJson(receivedAt).toString();
+                    publishMapAircraft(visibleMapAircraftCacheJson(receivedAt));
                 }
             } catch (Exception ignored) {
                 // The normal one-second monitor poll remains the fallback.
@@ -528,7 +541,7 @@ public class MonitorService extends Service implements LocationListener {
                             taggedCopy(regional, "ADSB.lol", 0d),
                             queryLatitude, queryLongitude, radiusNm);
                     updateMapAircraftCache(immediateMapAircraft, receivedAt);
-                    latestAllAircraftJson = visibleMapAircraftCacheJson(receivedAt).toString();
+                    publishMapAircraft(visibleMapAircraftCacheJson(receivedAt));
                     mapLoading = false;
                 }
             }
@@ -639,7 +652,7 @@ public class MonitorService extends Service implements LocationListener {
             publishSessionHistory();
             if (!expandedMap || requestMapGeneration == mapViewportGeneration()) {
                 updateMapAircraftCache(allAircraft, scanTime);
-                latestAllAircraftJson = visibleMapAircraftCacheJson(scanTime).toString();
+                publishMapAircraft(visibleMapAircraftCacheJson(scanTime));
             }
             publishTelemetry("connected", alertTargetCount, liveAircraft, nearestCallsign,
                     nearestDistanceKm, nearestAltitudeFt);
@@ -696,7 +709,7 @@ public class MonitorService extends Service implements LocationListener {
         JSONArray result = new JSONArray();
         if (aircraft == null) return result;
         double radiusKm = radiusNm * NAUTICAL_MILE_KM;
-        List<MapAircraftCandidate> candidates = new ArrayList<>();
+        Location own = latestLocation;
         for (int i = 0; i < aircraft.length(); i++) {
             JSONObject plane = aircraft.optJSONObject(i);
             double[] position = AircraftData.recentPosition(
@@ -704,207 +717,21 @@ public class MonitorService extends Service implements LocationListener {
             if (plane == null || position == null) continue;
             double queryDistance = DistanceCalculator.kilometers(
                     queryLatitude, queryLongitude, position[0], position[1]);
-            if (!Double.isNaN(queryDistance) && queryDistance <= radiusKm) {
-                candidates.add(new MapAircraftCandidate(
-                        plane, position[0], position[1], queryDistance));
-            }
-        }
-        candidates = sampleOverviewCandidates(candidates, queryLatitude, queryLongitude,
-                radiusNm, overviewAircraftLimit(radiusNm));
-        Location own = latestLocation;
-        for (MapAircraftCandidate candidate : candidates) {
-            JSONObject plane = candidate.aircraft;
+            if (Double.isNaN(queryDistance) || queryDistance > radiusKm) continue;
             double ownDistance = own == null ? Double.NaN : DistanceCalculator.kilometers(
-                    own.getLatitude(), own.getLongitude(),
-                    candidate.latitude, candidate.longitude);
-            if (Double.isNaN(ownDistance)) ownDistance = candidate.queryDistanceKm;
+                    own.getLatitude(), own.getLongitude(), position[0], position[1]);
+            if (Double.isNaN(ownDistance)) ownDistance = queryDistance;
             try {
                 result.put(compactAircraft(plane,
                         plane.optString("hex", "unknown").replace("~", ""),
                         AircraftData.callsign(plane), ownDistance,
                         altitudeFeet(plane.opt("alt_geom"), plane.opt("alt_baro")),
-                        candidate.latitude, candidate.longitude));
+                        position[0], position[1]));
             } catch (Exception ignored) {
                 // One malformed contact must not discard the other aircraft in the viewport.
             }
         }
         return result;
-    }
-
-    private static final class MapAircraftCandidate {
-        final JSONObject aircraft;
-        final double latitude;
-        final double longitude;
-        final double queryDistanceKm;
-
-        MapAircraftCandidate(JSONObject aircraft, double latitude, double longitude,
-                             double queryDistanceKm) {
-            this.aircraft = aircraft;
-            this.latitude = latitude;
-            this.longitude = longitude;
-            this.queryDistanceKm = queryDistanceKm;
-        }
-    }
-
-    private static List<MapAircraftCandidate> sampleOverviewCandidates(
-            List<MapAircraftCandidate> candidates, double centerLatitude,
-            double centerLongitude, int radiusNm, int maximumAircraft) {
-        if (maximumAircraft == Integer.MAX_VALUE || candidates.size() <= maximumAircraft) {
-            return candidates;
-        }
-        int columns = Math.max(6, (int) Math.ceil(Math.sqrt(maximumAircraft * .75d)));
-        int rows = Math.max(6, (int) Math.ceil(maximumAircraft * .75d / columns));
-        int cellCount = columns * rows;
-        Map<Integer, List<MapAircraftCandidate>> cells = new HashMap<>();
-        double latitudeSpan = Math.max(.01d,
-                radiusNm * NAUTICAL_MILE_KM / 111.32d);
-        double longitudeScale = Math.max(.12d,
-                Math.cos(Math.toRadians(centerLatitude)));
-        for (MapAircraftCandidate candidate : candidates) {
-            double longitudeDelta = candidate.longitude - centerLongitude;
-            while (longitudeDelta > 180d) longitudeDelta -= 360d;
-            while (longitudeDelta < -180d) longitudeDelta += 360d;
-            double normalizedX = longitudeDelta * longitudeScale / latitudeSpan;
-            double normalizedY = (candidate.latitude - centerLatitude) / latitudeSpan;
-            int column = Math.max(0, Math.min(columns - 1,
-                    (int) Math.floor((normalizedX + 1d) * .5d * columns)));
-            int row = Math.max(0, Math.min(rows - 1,
-                    (int) Math.floor((1d - (normalizedY + 1d) * .5d) * rows)));
-            int cell = row * columns + column;
-            List<MapAircraftCandidate> bucket = cells.get(cell);
-            if (bucket == null) {
-                bucket = new ArrayList<>();
-                cells.put(cell, bucket);
-            }
-            bucket.add(candidate);
-        }
-        Comparator<MapAircraftCandidate> preferredAircraft =
-                new Comparator<MapAircraftCandidate>() {
-            @Override public int compare(MapAircraftCandidate first,
-                                         MapAircraftCandidate second) {
-                int priority = Integer.compare(overviewAircraftPriority(second.aircraft),
-                        overviewAircraftPriority(first.aircraft));
-                if (priority != 0) return priority;
-                return first.aircraft.optString("hex", "").compareTo(
-                        second.aircraft.optString("hex", ""));
-            }
-        };
-        int maximumCellDepth = 0;
-        for (List<MapAircraftCandidate> bucket : cells.values()) {
-            Collections.sort(bucket, preferredAircraft);
-            maximumCellDepth = Math.max(maximumCellDepth, bucket.size());
-        }
-        List<MapAircraftCandidate> sampled = new ArrayList<>(maximumAircraft);
-        for (int depth = 0; depth < maximumCellDepth
-                && sampled.size() < maximumAircraft; depth++) {
-            for (int cell = 0; cell < cellCount
-                    && sampled.size() < maximumAircraft; cell++) {
-                List<MapAircraftCandidate> bucket = cells.get(cell);
-                if (bucket != null && depth < bucket.size()) sampled.add(bucket.get(depth));
-            }
-        }
-        return sampled;
-    }
-
-    static int overviewAircraftLimit(int radiusNm) {
-        if (radiusNm <= 80) return Integer.MAX_VALUE;
-        if (radiusNm <= 180) return 700;
-        if (radiusNm <= 400) return 520;
-        if (radiusNm <= 900) return 400;
-        return 320;
-    }
-
-    static JSONArray sampleOverviewAircraft(JSONArray aircraft, double centerLatitude,
-                                             double centerLongitude, int radiusNm,
-                                             int maximumAircraft) {
-        if (aircraft == null) return new JSONArray();
-        if (maximumAircraft <= 0) return new JSONArray();
-        if (maximumAircraft == Integer.MAX_VALUE || aircraft.length() <= maximumAircraft) {
-            return aircraft;
-        }
-
-        int columns = Math.max(6, (int) Math.ceil(Math.sqrt(maximumAircraft * .75d)));
-        int rows = Math.max(6, (int) Math.ceil(maximumAircraft * .75d / columns));
-        int cellCount = columns * rows;
-        Map<Integer, List<JSONObject>> cells = new HashMap<>();
-        double latitudeSpan = Math.max(.01d,
-                radiusNm * NAUTICAL_MILE_KM / 111.32d);
-        double longitudeScale = Math.max(.12d,
-                Math.cos(Math.toRadians(centerLatitude)));
-        for (int i = 0; i < aircraft.length(); i++) {
-            JSONObject item = aircraft.optJSONObject(i);
-            if (item == null) continue;
-            double latitude = item.optDouble("lat", Double.NaN);
-            double longitude = item.optDouble("lon", Double.NaN);
-            if (Double.isNaN(latitude) || Double.isNaN(longitude)) continue;
-            double longitudeDelta = longitude - centerLongitude;
-            while (longitudeDelta > 180d) longitudeDelta -= 360d;
-            while (longitudeDelta < -180d) longitudeDelta += 360d;
-            double normalizedX = longitudeDelta * longitudeScale / latitudeSpan;
-            double normalizedY = (latitude - centerLatitude) / latitudeSpan;
-            int column = Math.max(0, Math.min(columns - 1,
-                    (int) Math.floor((normalizedX + 1d) * .5d * columns)));
-            int row = Math.max(0, Math.min(rows - 1,
-                    (int) Math.floor((1d - (normalizedY + 1d) * .5d) * rows)));
-            int cell = row * columns + column;
-            List<JSONObject> bucket = cells.get(cell);
-            if (bucket == null) {
-                bucket = new ArrayList<>();
-                cells.put(cell, bucket);
-            }
-            bucket.add(item);
-        }
-        Comparator<JSONObject> preferredAircraft = new Comparator<JSONObject>() {
-            @Override public int compare(JSONObject first, JSONObject second) {
-                int priority = Integer.compare(
-                        overviewAircraftPriority(second), overviewAircraftPriority(first));
-                if (priority != 0) return priority;
-                return first.optString("hex", "").compareTo(
-                        second.optString("hex", ""));
-            }
-        };
-        int maximumCellDepth = 0;
-        for (List<JSONObject> bucket : cells.values()) {
-            Collections.sort(bucket, preferredAircraft);
-            maximumCellDepth = Math.max(maximumCellDepth, bucket.size());
-        }
-        JSONArray sampled = new JSONArray();
-        for (int depth = 0; depth < maximumCellDepth
-                && sampled.length() < maximumAircraft; depth++) {
-            for (int cell = 0; cell < cellCount
-                    && sampled.length() < maximumAircraft; cell++) {
-                List<JSONObject> bucket = cells.get(cell);
-                if (bucket != null && depth < bucket.size()) sampled.put(bucket.get(depth));
-            }
-        }
-        return sampled;
-    }
-
-    static int overviewAircraftPriority(JSONObject aircraft) {
-        String category = aircraft == null ? ""
-                : aircraft.optString("category", "").trim().toUpperCase(Locale.US);
-        int priority;
-        if ("A5".equals(category)) priority = 900;       // Heavy (> 136 t)
-        else if ("A4".equals(category)) priority = 820;  // High vortex
-        else if ("A3".equals(category)) priority = 760;  // Large
-        else if ("A6".equals(category)) priority = 680;  // High performance
-        else if ("A2".equals(category)) priority = 520;  // Small
-        else if ("A7".equals(category)) priority = 360;  // Rotorcraft
-        else if ("A1".equals(category)) priority = 260;  // Light
-        else priority = 420;
-        String type = aircraft == null ? "" : firstAircraftText(
-                aircraft, "t", "typeCode", "icao_type", "aircraft_type", "type")
-                .toUpperCase(Locale.US);
-        if (type.matches("A38[08]|A3[345][0-9A-Z]|B74[0-9A-Z]|B7[678][0-9A-Z]"
-                + "|DC10|MD11|A12[45]|A225|C5M|C17")) priority += 180;
-        else if (type.matches("A3[12][0-9A-Z]|B7[235][0-9A-Z]|E19[05]|CRJ[79]")) {
-            priority += 80;
-        }
-        if (aircraft != null && (aircraft.optBoolean("military", false)
-                || MilitaryClassifier.isMilitary(aircraft))) priority += 25;
-        if (aircraft != null && (aircraft.optBoolean("on_ground", false)
-                || AircraftData.isOnGround(aircraft))) priority -= 120;
-        return priority;
     }
 
     static synchronized JSONArray updateMapAircraftCache(JSONArray freshAircraft, long now) {
@@ -988,11 +815,7 @@ public class MonitorService extends Service implements LocationListener {
                 expired.add(entry.getKey());
                 continue;
             }
-            try {
-                JSONObject copy = new JSONObject(entry.getValue().toString());
-                copy.put("map_cache_age_seconds", ageMs / 1000d);
-                result.put(copy);
-            } catch (Exception ignored) { }
+            result.put(entry.getValue());
         }
         for (String hex : expired) {
             mapAircraftCache.remove(hex);
@@ -1024,18 +847,40 @@ public class MonitorService extends Service implements LocationListener {
                 inViewport = !Double.isNaN(distance) && distance <= radiusKm;
             }
             if (!inViewport) continue;
-            try {
-                JSONObject copy = new JSONObject(aircraft.toString());
-                copy.put("map_cache_age_seconds", ageMs / 1000d);
-                visible.put(copy);
-            } catch (Exception ignored) { }
+            visible.put(aircraft);
         }
         for (String hex : expired) {
             mapAircraftCache.remove(hex);
             mapAircraftCacheTimes.remove(hex);
         }
-        return sampleOverviewAircraft(visible, mapCenterLatitude, mapCenterLongitude,
-                mapRadiusNm, overviewAircraftLimit(mapRadiusNm));
+        return visible;
+    }
+
+    private static synchronized void publishMapAircraft(JSONArray aircraft) {
+        final int chunkSize = 300;
+        int count = aircraft == null ? 0 : aircraft.length();
+        if (count == 0) {
+            latestMapAircraftPayload = new MapAircraftPayload(
+                    ++mapAircraftPayloadRevision, new String[]{"[]"}, 0);
+            return;
+        }
+        int chunkCount = (count + chunkSize - 1) / chunkSize;
+        String[] chunks = new String[chunkCount];
+        for (int chunk = 0; chunk < chunkCount; chunk++) {
+            int start = chunk * chunkSize;
+            int end = Math.min(count, start + chunkSize);
+            StringBuilder json = new StringBuilder((end - start) * 320);
+            json.append('[');
+            for (int i = start; i < end; i++) {
+                if (i > start) json.append(',');
+                Object item = aircraft.opt(i);
+                json.append(item == null ? "null" : item.toString());
+            }
+            json.append(']');
+            chunks[chunk] = json.toString();
+        }
+        latestMapAircraftPayload = new MapAircraftPayload(
+                ++mapAircraftPayloadRevision, chunks, count);
     }
 
     private static synchronized void pruneMapAircraftCacheToViewport() {
@@ -1058,7 +903,7 @@ public class MonitorService extends Service implements LocationListener {
     private static synchronized void clearMapAircraftCache() {
         mapAircraftCache.clear();
         mapAircraftCacheTimes.clear();
-        latestAllAircraftJson = "[]";
+        publishMapAircraft(new JSONArray());
     }
 
     private void increaseRateLimitBackoff(String provider) {

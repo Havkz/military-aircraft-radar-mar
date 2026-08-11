@@ -27,6 +27,8 @@ final class AircraftMapPanel extends FrameLayout {
     private boolean ready;
     private boolean pendingRefresh;
     private boolean pageVisible;
+    private long appliedPayloadRevision = -1L;
+    private long sendingPayloadRevision = -1L;
     private String pendingFocusHex = "";
     private double pendingFocusLatitude = Double.NaN;
     private double pendingFocusLongitude = Double.NaN;
@@ -46,7 +48,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.34 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.35 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
@@ -104,16 +106,44 @@ final class AircraftMapPanel extends FrameLayout {
         }
         int radius = AppPreferences.get(host).getInt(
                 AppPreferences.KEY_RADIUS_KM, AppPreferences.DEFAULT_RADIUS_KM);
-        String mapAircraftJson = MonitorService.latestAllAircraftJson();
+        MonitorService.MapAircraftPayload payload =
+                MonitorService.latestMapAircraftPayload();
         JSONObject mapSettings = MapPreferences.json(host);
         try { mapSettings.put("loading", MonitorService.isMapLoading()); }
         catch (Exception ignored) { }
-        String script = String.format(Locale.US, "window.marUpdate(%s,%s,%s,%d,%s)",
-                JSONObject.quote(mapAircraftJson),
+        String configuration = String.format(Locale.US, "%s,%s,%d,%s",
                 Double.isNaN(latitude) ? "null" : Double.toString(latitude),
                 Double.isNaN(longitude) ? "null" : Double.toString(longitude),
                 radius, mapSettings.toString());
-        webView.evaluateJavascript(script, null);
+        if (payload.revision == appliedPayloadRevision
+                || payload.revision == sendingPayloadRevision) {
+            webView.evaluateJavascript(
+                    "window.marConfigure&&window.marConfigure(" + configuration + ")", null);
+            return;
+        }
+        sendingPayloadRevision = payload.revision;
+        String begin = "window.marBeginUpdate&&window.marBeginUpdate("
+                + payload.revision + "," + configuration + ","
+                + payload.aircraftCount + ")";
+        webView.evaluateJavascript(begin, ignored -> sendPayloadChunk(payload, 0));
+    }
+
+    private void sendPayloadChunk(MonitorService.MapAircraftPayload payload, int index) {
+        if (!ready || payload.revision != sendingPayloadRevision
+                || index < 0 || index >= payload.chunks.length) return;
+        boolean last = index == payload.chunks.length - 1;
+        String script = "window.marAppendUpdate&&window.marAppendUpdate("
+                + payload.revision + "," + payload.chunks[index] + ","
+                + (last ? "true" : "false") + ")";
+        webView.evaluateJavascript(script, ignored -> {
+            if (payload.revision != sendingPayloadRevision) return;
+            if (last) {
+                appliedPayloadRevision = payload.revision;
+                sendingPayloadRevision = -1L;
+            } else {
+                webView.postDelayed(() -> sendPayloadChunk(payload, index + 1), 8L);
+            }
+        });
     }
 
     void setPageVisible(boolean visible) {
@@ -204,6 +234,7 @@ final class AircraftMapPanel extends FrameLayout {
 
     void destroy() {
         ready = false;
+        sendingPayloadRevision = -1L;
         MonitorService.setMapIsolatedAircraft("");
         photoExecutor.shutdownNow();
         traceExecutor.shutdownNow();
