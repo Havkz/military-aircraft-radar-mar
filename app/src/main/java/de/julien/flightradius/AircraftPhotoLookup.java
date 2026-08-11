@@ -16,28 +16,47 @@ import java.util.zip.GZIPInputStream;
 
 final class AircraftPhotoLookup {
     private static final String USER_AGENT =
-            "MilitaryAircraftRadar/1.2.47 (+https://github.com/Havkz/military-aircraft-radar-mar)";
+            "MilitaryAircraftRadar/1.2.48 (+https://github.com/Havkz/military-aircraft-radar-mar)";
 
     private AircraftPhotoLookup() { }
 
     static JSONObject find(String registration, String aircraftType) {
+        return find("", registration, aircraftType);
+    }
+
+    static JSONObject find(String hex, String registration, String aircraftType) {
         String normalized = normalizeRegistration(registration);
-        if (normalized.isEmpty()) return new JSONObject();
         JSONObject planespotters = new JSONObject();
         JSONObject verifiedMetadata = new JSONObject();
+        String normalizedHex = normalizeHex(hex);
         try {
-            planespotters = parsePlanespotters(get(
-                    "https://api.planespotters.net/pub/photos/reg/" + path(registration)),
-                    normalized);
+            if (!normalizedHex.isEmpty()) {
+                planespotters = parsePlanespotters(get(
+                        "https://api.planespotters.net/pub/photos/hex/" + normalizedHex),
+                        normalized);
+            }
         } catch (Exception ignored) { }
+        if (planespotters.length() == 0 && !normalized.isEmpty()) {
+            try {
+                planespotters = parsePlanespotters(get(
+                        "https://api.planespotters.net/pub/photos/reg/" + path(registration)),
+                        normalized);
+            } catch (Exception ignored) { }
+        }
+        String resolvedRegistration = firstMeaningful(
+                registration, planespotters.optString("registration"));
+        String resolvedNormalized = normalizeRegistration(resolvedRegistration);
+        if (resolvedNormalized.isEmpty()) return planespotters;
         String planespottingHtml = "";
         try {
             planespottingHtml = get(
                     "https://www.planespotting.be/index.php?page=aircraft&registration="
-                            + path(registration));
-            JSONObject planespotting = parsePlanespotting(planespottingHtml, normalized);
+                            + path(resolvedRegistration));
+            JSONObject planespotting = parsePlanespotting(
+                    planespottingHtml, resolvedNormalized);
             JSONObject planespottingMetadata = new JSONObject();
-            addPlanespottingMetadata(planespottingMetadata, planespottingHtml, normalized);
+            addPlanespottingMetadata(
+                    planespottingMetadata, planespottingHtml, resolvedNormalized);
             verifiedMetadata = planespottingMetadata;
             mergeMissing(planespotting, planespottingMetadata);
             if (planespotters.length() > 0) {
@@ -53,7 +72,7 @@ final class AircraftPhotoLookup {
         if (planespotters.length() > 0) return planespotters;
         try {
             JSONObject fallback = parseWikimedia(
-                    get(wikimediaUrl(registration, aircraftType)), normalized);
+                    get(wikimediaUrl(resolvedRegistration, aircraftType)), resolvedNormalized);
             if (verifiedMetadata.length() > 0) {
                 mergeMissing(fallback, verifiedMetadata);
                 fallback.put("metadata_verified", true);
@@ -78,12 +97,17 @@ final class AircraftPhotoLookup {
             return new JSONObject();
         }
         String link = photo.optString("link");
-        if (!normalizeRegistration(link).contains(normalizedRegistration)) {
+        String resolvedRegistration = registrationFromPlanespottersLink(link);
+        if (!normalizedRegistration.isEmpty() && !normalizeRegistration(resolvedRegistration)
+                .equals(normalizedRegistration)) {
             return new JSONObject();
         }
         JSONObject result = photo(thumbnail.optString("src"), link,
                 "Planespotters.net", photo.optString("photographer"));
-        addPlanespottersLinkMetadata(result, link, normalizedRegistration);
+        putIfText(result, "registration", resolvedRegistration);
+        addPlanespottersLinkMetadata(result, link,
+                normalizeRegistration(resolvedRegistration));
+        copyOperatorToAirline(result);
         return result;
     }
 
@@ -126,7 +150,9 @@ final class AircraftPhotoLookup {
         }
         if (manufacturer < registrationEnd) return;
         putIfText(result, "operator", words(parts, registrationEnd, manufacturer));
-        putIfText(result, "description", words(parts, manufacturer, parts.length));
+        String description = aircraftDescription(words(parts, manufacturer, parts.length));
+        putIfText(result, "description", description);
+        putIfText(result, "type", icaoType(description));
         result.put("metadata_source", "Planespotters.net");
     }
 
@@ -145,6 +171,7 @@ final class AircraftPhotoLookup {
         if (typeCode.find()) putIfText(result, "type", typeCode.group(1));
         putIfText(result, "msn", labelledHtmlValue(html, "MSN"));
         putIfText(result, "status", labelledHtmlValue(html, "Status"));
+        copyOperatorToAirline(result);
         if (result.length() > fieldsBefore) result.put("metadata_source", "Planespotting.be");
     }
 
@@ -176,7 +203,11 @@ final class AircraftPhotoLookup {
             if (parts[i].isEmpty()) continue;
             if (value.length() > 0) value.append(' ');
             String part = parts[i];
-            value.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+            if (part.matches("gp")) {
+                value.append(part.toUpperCase(Locale.US));
+            } else {
+                value.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+            }
         }
         return value.toString();
     }
@@ -187,14 +218,67 @@ final class AircraftPhotoLookup {
 
     private static void mergeMissing(JSONObject target, JSONObject supplement) throws Exception {
         if (supplement == null) return;
-        String[] keys = {"operator", "description", "type", "msn", "status",
-                "metadata_source"};
+        String[] keys = {"registration", "operator", "airline", "description",
+                "type", "msn", "status", "metadata_source"};
         for (String key : keys) {
-            if (target.optString(key).trim().isEmpty()
-                    && !supplement.optString(key).trim().isEmpty()) {
+            if (!AircraftData.meaningful(target.opt(key))
+                    && AircraftData.meaningful(supplement.opt(key))) {
                 target.put(key, supplement.optString(key).trim());
             }
         }
+        copyOperatorToAirline(target);
+    }
+
+    private static String registrationFromPlanespottersLink(String link) {
+        String path = link == null ? "" : link.replaceAll("[?#].*$", "");
+        String slug = path.substring(path.lastIndexOf('/') + 1)
+                .toUpperCase(Locale.US).replaceAll("[^A-Z0-9-]", "");
+        String[] parts = slug.split("-");
+        if (parts.length == 0) return "";
+        if (parts[0].matches("[A-Z0-9]{4,6}")) return parts[0];
+        if (parts.length > 1 && parts[0].matches("[A-Z0-9]{1,3}")
+                && parts[1].matches("[A-Z0-9]{1,5}")) {
+            return parts[0] + "-" + parts[1];
+        }
+        return "";
+    }
+
+    private static String aircraftDescription(String value) {
+        Matcher boeing = Pattern.compile(
+                "(?i)^Boeing (737|747|757|767|777) ([2-9])[A-Z0-9]*$")
+                .matcher(value == null ? "" : value.trim());
+        if (boeing.matches()) return "Boeing " + boeing.group(1) + "-"
+                + boeing.group(2) + "00";
+        return value;
+    }
+
+    private static String icaoType(String description) {
+        Matcher boeing = Pattern.compile(
+                "(?i)^Boeing (737|747|757|767|777)-([2-9])00$")
+                .matcher(description == null ? "" : description.trim());
+        if (!boeing.matches()) return "";
+        String family = boeing.group(1);
+        return "B" + family.substring(0, 2) + boeing.group(2);
+    }
+
+    private static void copyOperatorToAirline(JSONObject result) throws Exception {
+        if (!AircraftData.meaningful(result.opt("airline"))
+                && AircraftData.meaningful(result.opt("operator"))) {
+            result.put("airline", result.optString("operator").trim());
+        }
+    }
+
+    private static String firstMeaningful(String... values) {
+        for (String value : values) {
+            if (AircraftData.meaningful(value)) return value.trim();
+        }
+        return "";
+    }
+
+    private static String normalizeHex(String value) {
+        String hex = value == null ? "" : value.replace("~", "")
+                .trim().toUpperCase(Locale.US);
+        return hex.matches("[0-9A-F]{6}") ? hex : "";
     }
 
     static JSONObject parseWikimedia(String json, String normalizedRegistration)

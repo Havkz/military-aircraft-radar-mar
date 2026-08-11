@@ -52,7 +52,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.47 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.48 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
@@ -210,7 +210,8 @@ final class AircraftMapPanel extends FrameLayout {
         @JavascriptInterface public void requestAircraftPhoto(
                 String hex, String registration, String aircraftType) {
             photoExecutor.submit(() -> {
-                JSONObject result = AircraftPhotoLookup.find(registration, aircraftType);
+                JSONObject result = AircraftPhotoLookup.find(
+                        hex, registration, aircraftType);
                 String script = "window.marPhotoResult&&window.marPhotoResult("
                         + JSONObject.quote(hex == null ? "" : hex) + ","
                         + JSONObject.quote(registration == null ? "" : registration) + ","

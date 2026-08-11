@@ -20,7 +20,7 @@ final class AircraftRouteLookup {
     private static final long CACHE_MISS_MS = 15 * 60_000L;
     private static final String ADSBDB_API = "https://api.adsbdb.com/v0/callsign/";
     private static final String VRS_ROUTES = "https://vrs-standing-data.adsb.lol/routes/";
-    private static final String USER_AGENT = "MilitaryAircraftRadar/1.2.47 "
+    private static final String USER_AGENT = "MilitaryAircraftRadar/1.2.48 "
             + "(+https://github.com/Havkz/military-aircraft-radar-mar)";
 
     private AircraftRouteLookup() { }

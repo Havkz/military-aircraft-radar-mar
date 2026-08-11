@@ -896,9 +896,9 @@ public class MonitorService extends Service implements LocationListener {
                 } else if ("military".equals(key) || "rotorcraft".equals(key)) {
                     merged.put(key, merged.optBoolean(key, false)
                             || fresh.optBoolean(key, false));
-                } else if (!mapIdentityField(key)
-                        || AircraftData.meaningful(incoming)
-                        || !AircraftData.meaningful(merged.opt(key))) {
+                } else if (!mapStaticMetadataField(key)
+                        || !AircraftData.meaningful(merged.opt(key))
+                        && AircraftData.meaningful(incoming)) {
                     merged.put(key, incoming);
                 }
             }
@@ -908,11 +908,12 @@ public class MonitorService extends Service implements LocationListener {
         }
     }
 
-    private static boolean mapIdentityField(String key) {
-        return "callsign".equals(key) || "display_name".equals(key)
-                || "registration".equals(key) || "country".equals(key)
-                || "operator".equals(key) || "type".equals(key)
-                || "description".equals(key) || "category".equals(key);
+    private static boolean mapStaticMetadataField(String key) {
+        return "registration".equals(key) || "country".equals(key)
+                || "operator".equals(key) || "airline".equals(key)
+                || "type".equals(key) || "description".equals(key)
+                || "msn".equals(key) || "status".equals(key)
+                || "metadata_source".equals(key);
     }
 
     private static JSONArray mergedSources(JSONArray first, JSONArray second) {
@@ -1611,13 +1612,20 @@ public class MonitorService extends Service implements LocationListener {
                 plane, "r", "registration", "reg"));
         item.put("country", IcaoCountry.providerOrHex(plane.optString("country",
                 plane.optString("country_name", "")), hex));
-        item.put("operator", firstAircraftText(
-                plane, "ownOp", "operator", "operator_name"));
+        String operator = firstAircraftText(
+                plane, "ownOp", "operator", "operator_name");
+        item.put("operator", operator);
+        String airline = firstAircraftText(plane, "airline", "airline_name");
+        item.put("airline", AircraftData.meaningful(airline) ? airline : operator);
         item.put("type", firstAircraftText(
                 plane, "t", "typeCode", "icao_type", "aircraft_type"));
         item.put("data_source", plane.optString("type", ""));
         item.put("db_flags", plane.optInt("dbFlags", 0));
         item.put("description", bestAircraftDescription(plane));
+        item.put("msn", firstAircraftText(
+                plane, "msn", "serial", "serial_number"));
+        item.put("status", firstAircraftText(plane, "status"));
+        item.put("metadata_source", firstAircraftText(plane, "metadata_source"));
         item.put("category", plane.optString("category", ""));
         item.put("military", MilitaryClassifier.isMilitary(plane));
         item.put("rotorcraft", AircraftData.isRotorcraft(plane));

@@ -158,6 +158,7 @@ final class AircraftData {
             return !text.isEmpty() && !"-".equals(text) && !"—".equals(text)
                     && !"n/a".equals(text) && !"na".equals(text)
                     && !"none".equals(text) && !"null".equals(text)
+                    && !"undefined".equals(text)
                     && !"unknown".equals(text) && !"unknown type".equals(text)
                     && !"no callsign".equals(text);
         }
