@@ -20,7 +20,6 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
-import android.os.PowerManager;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -60,6 +59,8 @@ public class MonitorService extends Service implements LocationListener {
     static final String ACTION_RADIUS_CHANGED = "de.julien.flightradius.RADIUS_CHANGED";
     static final String ACTION_SOURCES_CHANGED = "de.julien.flightradius.SOURCES_CHANGED";
     static final String ACTION_VIEWPORT_CHANGED = "de.julien.flightradius.VIEWPORT_CHANGED";
+    static final String ACTION_APP_VISIBILITY_CHANGED =
+            "de.julien.flightradius.APP_VISIBILITY_CHANGED";
     private static final long ADSB_LOL_MILITARY_REFRESH_MS = 60_000L;
     private static final long ADSB_LOL_BASE_REFRESH_MS = 1_000L;
     private static final long AIRPLANES_REFRESH_MS = 180_000L;
@@ -71,8 +72,7 @@ public class MonitorService extends Service implements LocationListener {
     private static final double MAP_MAX_POSITION_AGE_SECONDS = 210d;
     private static final int EXPANDED_MAP_RADIUS_NM = 2_500;
     private static final double NAUTICAL_MILE_KM = 1.852d;
-    private static final long WAKE_LOCK_TIMEOUT_MS = 10 * 60_000L;
-    private static final long WAKE_LOCK_RENEW_MS = 9 * 60_000L;
+    private static final long BACKGROUND_ALERT_REFRESH_MS = 15_000L;
     private static final int STATUS_NOTIFICATION_ID = 1001;
     private static final String MILITARY_ENDPOINT = "https://api.adsb.lol/v2/mil";
     private static volatile long mapAircraftPayloadRevision;
@@ -81,6 +81,7 @@ public class MonitorService extends Service implements LocationListener {
     private static volatile double latestOwnLatitude = Double.NaN;
     private static volatile double latestOwnLongitude = Double.NaN;
     private static volatile boolean mapVisible;
+    private static volatile boolean appVisible;
     private static volatile boolean mapLoading;
     private static volatile double mapCenterLatitude = Double.NaN;
     private static volatile double mapCenterLongitude = Double.NaN;
@@ -112,7 +113,6 @@ public class MonitorService extends Service implements LocationListener {
     private volatile String globeSessionCookie = "";
     private volatile long globeSessionCookieExpiresMs;
     private LocationManager locationManager;
-    private PowerManager.WakeLock monitorWakeLock;
     private volatile Location latestLocation;
     private static volatile boolean running;
     private boolean pollingScheduled;
@@ -149,6 +149,7 @@ public class MonitorService extends Service implements LocationListener {
     static double latestOwnLatitude() { return latestOwnLatitude; }
     static double latestOwnLongitude() { return latestOwnLongitude; }
     static void setMapVisible(boolean visible) { mapVisible = visible; }
+    static void setAppVisible(boolean visible) { appVisible = visible; }
     static boolean isMapLoading() { return mapVisible && mapLoading; }
     static synchronized boolean setMapViewport(
             double latitude, double longitude, int radiusNm) {
@@ -256,18 +257,9 @@ public class MonitorService extends Service implements LocationListener {
             finally {
                 if (worker != null) {
                     long elapsed = Math.max(0L, System.currentTimeMillis() - startedAt);
-                    worker.postDelayed(this, Math.max(0L, nextAdsbLolDelayMs() - elapsed));
+                    worker.postDelayed(this, nextPollDelayMs(elapsed));
                 }
             }
-        }
-    };
-
-    private final Runnable renewWakeLockTask = new Runnable() {
-        @Override public void run() {
-            if (monitorWakeLock == null || worker == null) return;
-            if (monitorWakeLock.isHeld()) monitorWakeLock.release();
-            monitorWakeLock.acquire(WAKE_LOCK_TIMEOUT_MS);
-            worker.postDelayed(this, WAKE_LOCK_RENEW_MS);
         }
     };
 
@@ -278,20 +270,9 @@ public class MonitorService extends Service implements LocationListener {
         startForeground(STATUS_NOTIFICATION_ID,
                 statusNotification("INITIALIZING",
                         L10n.t(this, "waiting_location"), 0));
-        PowerManager power = getSystemService(PowerManager.class);
-        if (power != null) {
-            monitorWakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
-                    "MAR:active-monitoring");
-            monitorWakeLock.setReferenceCounted(false);
-            monitorWakeLock.acquire(WAKE_LOCK_TIMEOUT_MS);
-        }
-
         workerThread = new HandlerThread("military-live-monitor");
         workerThread.start();
         worker = new Handler(workerThread.getLooper());
-        if (monitorWakeLock != null) {
-            worker.postDelayed(renewWakeLockTask, WAKE_LOCK_RENEW_MS);
-        }
         networkPool = Executors.newFixedThreadPool(5);
         immediateMapExecutor = Executors.newFixedThreadPool(2);
         squawkExecutor = Executors.newSingleThreadExecutor();
@@ -313,10 +294,7 @@ public class MonitorService extends Service implements LocationListener {
         }
         loadSessionHistory();
         loadGlobalSquawkState();
-        if (hasLocationPermission()) {
-            registerProvider(LocationManager.GPS_PROVIDER);
-            registerProvider(LocationManager.NETWORK_PROVIDER);
-        }
+        if (hasLocationPermission()) configureLocationUpdates(appVisible);
         running = true;
     }
 
@@ -356,13 +334,25 @@ public class MonitorService extends Service implements LocationListener {
         }
         boolean viewportChanged = intent != null
                 && ACTION_VIEWPORT_CHANGED.equals(intent.getAction());
+        boolean visibilityChanged = intent != null
+                && ACTION_APP_VISIBILITY_CHANGED.equals(intent.getAction());
+        if (visibilityChanged) {
+            appVisible = intent.getBooleanExtra("visible", false);
+            configureLocationUpdates(appVisible);
+        }
         if (intent != null && ACTION_SOURCES_CHANGED.equals(intent.getAction())) {
             pruneUnconfiguredGlobalSquawkEvents();
         }
         if (viewportChanged && pollingScheduled && immediateMapExecutor != null) {
             requestImmediateMapAircraft();
         }
-        if (intent != null && (ACTION_RADIUS_CHANGED.equals(intent.getAction())
+        if (visibilityChanged && pollingScheduled && worker != null) {
+            worker.post(() -> {
+                worker.removeCallbacks(pollTask);
+                if (appVisible) worker.post(pollTask);
+                else worker.postDelayed(pollTask, nextPollDelayMs(0L));
+            });
+        } else if (intent != null && (ACTION_RADIUS_CHANGED.equals(intent.getAction())
                 || ACTION_SOURCES_CHANGED.equals(intent.getAction()))
                 && pollingScheduled && worker != null) {
             worker.post(() -> {
@@ -448,9 +438,6 @@ public class MonitorService extends Service implements LocationListener {
         if (squawkExecutor != null) squawkExecutor.shutdownNow();
         immediateMapFuture = null;
         squawkFuture = null;
-        if (monitorWakeLock != null && monitorWakeLock.isHeld()) {
-            monitorWakeLock.release();
-        }
         NotificationManager notificationManager = getSystemService(NotificationManager.class);
         if (!shouldRestart) {
             for (Integer notificationId : aircraftNotificationIds) {
@@ -477,10 +464,26 @@ public class MonitorService extends Service implements LocationListener {
                 || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
     }
 
-    private void registerProvider(String provider) {
+    private void configureLocationUpdates(boolean foreground) {
+        if (locationManager == null || !hasLocationPermission()) return;
+        try {
+            locationManager.removeUpdates(this);
+        } catch (SecurityException ignored) { }
+        if (foreground) {
+            registerProvider(LocationManager.GPS_PROVIDER, 30_000L, 50f);
+            registerProvider(LocationManager.NETWORK_PROVIDER, 30_000L, 50f);
+        } else {
+            registerProvider(LocationManager.NETWORK_PROVIDER, 120_000L, 500f);
+            registerProvider(LocationManager.PASSIVE_PROVIDER, 120_000L, 500f);
+        }
+    }
+
+    private void registerProvider(String provider, long minimumTimeMs,
+                                  float minimumDistanceMeters) {
         try {
             if (!locationManager.isProviderEnabled(provider)) return;
-            locationManager.requestLocationUpdates(provider, 30_000L, 50f, this);
+            locationManager.requestLocationUpdates(provider, minimumTimeMs,
+                    minimumDistanceMeters, this);
             Location lastKnown = locationManager.getLastKnownLocation(provider);
             if (lastKnown != null && (latestLocation == null
                     || lastKnown.getTime() > latestLocation.getTime())) {
@@ -503,16 +506,20 @@ public class MonitorService extends Service implements LocationListener {
 
     private void pollAircraft() {
         pollGlobalSquawkAlerts(System.currentTimeMillis());
+        boolean interactive = appVisible;
         Location own = latestLocation;
         int radiusKm = AppPreferences.get(this)
                 .getInt(AppPreferences.KEY_RADIUS_KM, AppPreferences.DEFAULT_RADIUS_KM);
         if (own == null) {
-            publishTelemetry("no_location", 0, new JSONArray(), "", Double.NaN, Double.NaN);
-            updateStatus("NO LOCATION", "", 0);
+            if (interactive) {
+                publishTelemetry("no_location", 0, new JSONArray(), "",
+                        Double.NaN, Double.NaN);
+                updateStatus("NO LOCATION", "", 0);
+            }
             return;
         }
 
-        boolean expandedMap = mapVisible;
+        boolean expandedMap = interactive && mapVisible;
         boolean viewportAvailable = expandedMap && !Double.isNaN(mapCenterLatitude)
                 && !Double.isNaN(mapCenterLongitude);
         double queryLatitude = viewportAvailable ? mapCenterLatitude : own.getLatitude();
@@ -630,11 +637,14 @@ public class MonitorService extends Service implements LocationListener {
                     taggedCopy(cachedAdsbExchange, "ADS-B Exchange",
                             ageSeconds(now, lastAdsbExchangeFetchMs)));
             JSONArray liveAircraft = new JSONArray();
-            JSONArray mapAircraftSource = isolatedMapQuery
-                    ? taggedCopy(cachedAdsbLolRegional, "ADSB.lol", ageSeconds(
-                    now, lastAdsbLolRegionalFetchMs)) : aircraft;
-            JSONArray allAircraft = compactMapAircraft(
-                    mapAircraftSource, queryLatitude, queryLongitude, radiusNm);
+            JSONArray allAircraft = new JSONArray();
+            if (interactive) {
+                JSONArray mapAircraftSource = isolatedMapQuery
+                        ? taggedCopy(cachedAdsbLolRegional, "ADSB.lol", ageSeconds(
+                        now, lastAdsbLolRegionalFetchMs)) : aircraft;
+                allAircraft = compactMapAircraft(
+                        mapAircraftSource, queryLatitude, queryLongitude, radiusNm);
+            }
             Set<String> currentlyInside = new HashSet<>();
             long scanTime = System.currentTimeMillis();
             int alertTargetCount = 0;
@@ -673,8 +683,8 @@ public class MonitorService extends Service implements LocationListener {
                     } else if (AircraftData.isRotorcraft(plane)) {
                         compact.put("alert_reason", MapL10n.t(this, "rotorcraft"));
                     } else compact.put("alert_reason", MapL10n.t(this, "military"));
-                    liveAircraft.put(compact);
-                    updateSessionRecord(compact, scanTime);
+                    if (interactive) liveAircraft.put(compact);
+                    if (interactive) updateSessionRecord(compact, scanTime);
                     String displayName = AircraftData.displayName(plane);
                     if (!displayName.isEmpty() && (Double.isNaN(nearestDistanceKm)
                             || distanceKm < nearestDistanceKm)) {
@@ -692,17 +702,22 @@ public class MonitorService extends Service implements LocationListener {
 
             markMissingAircraftOutOfRange(currentlyInside);
             pruneNotificationEntryCycles(scanTime);
-            publishSessionHistory();
-            if (!expandedMap || requestMapGeneration == mapViewportGeneration()) {
-                updateMapAircraftCache(allAircraft, scanTime);
-                publishMapAircraft(visibleMapAircraftCacheJson(scanTime));
+            if (interactive) {
+                publishSessionHistory();
+                if (!expandedMap || requestMapGeneration == mapViewportGeneration()) {
+                    updateMapAircraftCache(allAircraft, scanTime);
+                    publishMapAircraft(visibleMapAircraftCacheJson(scanTime));
+                }
+                publishTelemetry("connected", alertTargetCount, liveAircraft,
+                        nearestCallsign, nearestDistanceKm, nearestAltitudeFt);
+                updateStatus("LIVE // " + nowTime(), "", alertTargetCount);
             }
-            publishTelemetry("connected", alertTargetCount, liveAircraft, nearestCallsign,
-                    nearestDistanceKm, nearestAltitudeFt);
-            updateStatus("LIVE // " + nowTime(), "", alertTargetCount);
         } catch (Exception e) {
-            AppPreferences.get(this).edit().putString(AppPreferences.KEY_CONNECTION, "error").apply();
-            updateStatus("SIGNAL LOST", "", 0);
+            if (interactive) {
+                AppPreferences.get(this).edit()
+                        .putString(AppPreferences.KEY_CONNECTION, "error").apply();
+                updateStatus("SIGNAL LOST", "", 0);
+            }
         } finally {
             if (!expandedMap || requestMapGeneration == mapViewportGeneration()) {
                 mapLoading = false;
@@ -1043,6 +1058,15 @@ public class MonitorService extends Service implements LocationListener {
     private long nextAdsbLolDelayMs() {
         return adsbLolBackoff.delayMs(
                 ADSB_LOL_BASE_REFRESH_MS, System.currentTimeMillis());
+    }
+
+    private long nextPollDelayMs(long elapsedMs) {
+        return pollDelayMs(appVisible, nextAdsbLolDelayMs(), elapsedMs);
+    }
+
+    static long pollDelayMs(boolean foreground, long providerDelayMs, long elapsedMs) {
+        return foreground ? Math.max(0L, providerDelayMs - Math.max(0L, elapsedMs))
+                : Math.max(BACKGROUND_ALERT_REFRESH_MS, providerDelayMs);
     }
 
     private long nextAirplanesDelayMs() {

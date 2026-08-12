@@ -431,6 +431,7 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         activityResumed = true;
+        updateServiceVisibility(true);
         updateMapVisibility();
         if (!signature().equals(settingsSignature)) {
             recreate();
@@ -443,8 +444,17 @@ public class MainActivity extends Activity {
     @Override protected void onPause() {
         activityResumed = false;
         updateMapVisibility();
+        updateServiceVisibility(false);
         uiHandler.removeCallbacks(liveUi);
         super.onPause();
+    }
+
+    private void updateServiceVisibility(boolean visible) {
+        MonitorService.setAppVisible(visible);
+        if (!MonitorService.isRunning()) return;
+        startService(new Intent(this, MonitorService.class)
+                .setAction(MonitorService.ACTION_APP_VISIBILITY_CHANGED)
+                .putExtra("visible", visible));
     }
 
     @Override protected void onDestroy() {
