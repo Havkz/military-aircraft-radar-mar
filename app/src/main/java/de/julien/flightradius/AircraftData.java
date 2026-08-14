@@ -93,6 +93,10 @@ final class AircraftData {
     static boolean isRotorcraft(JSONObject aircraft) {
         if (aircraft == null) return false;
         if ("A7".equalsIgnoreCase(aircraft.optString("category", ""))) return true;
+        String type = aircraft.optString("t", "").trim();
+        if (type.isEmpty()) type = aircraft.optString("type", "").trim();
+        type = type.toUpperCase(Locale.US);
+        if ("G2CA".equals(type)) return true;
         String description = (aircraft.optString("desc", "") + " "
                 + aircraft.optString("typeDescription", "")).toUpperCase(Locale.US);
         String compactDescription = aircraft.optString("desc", "")

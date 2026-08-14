@@ -17,6 +17,8 @@ import java.util.zip.GZIPInputStream;
 
 final class AircraftPhotoLookup {
     private static final String USER_AGENT = NetworkUserAgent.MOBILE_BROWSER;
+    private static final String PLANESPOTTERS_USER_AGENT = "MilitaryAircraftRadar/1.2 "
+            + "(+https://github.com/Havkz/military-aircraft-radar-mar)";
 
     private AircraftPhotoLookup() { }
 
@@ -428,7 +430,9 @@ final class AircraftPhotoLookup {
         try {
             connection.setConnectTimeout(8_000);
             connection.setReadTimeout(12_000);
-            connection.setRequestProperty("User-Agent", USER_AGENT);
+            connection.setRequestProperty("User-Agent",
+                    endpoint.startsWith("https://api.planespotters.net/")
+                            ? PLANESPOTTERS_USER_AGENT : USER_AGENT);
             connection.setRequestProperty("Accept-Encoding", "gzip");
             if (connection.getResponseCode() != 200) return "";
             InputStream stream = connection.getInputStream();
