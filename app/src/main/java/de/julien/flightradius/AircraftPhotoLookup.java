@@ -497,7 +497,9 @@ final class AircraftPhotoLookup {
     }
 
     static boolean isExactGroundCode(String value) {
-        return value != null && "GND".equals(value.trim().toUpperCase(Locale.US));
+        if (value == null) return false;
+        String code = value.trim().toUpperCase(Locale.US);
+        return "GND".equals(code) || "GRND".equals(code);
     }
 
     private static String registrationPattern(String normalizedRegistration) {
