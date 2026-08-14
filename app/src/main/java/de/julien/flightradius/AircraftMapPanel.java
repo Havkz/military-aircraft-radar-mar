@@ -184,11 +184,16 @@ final class AircraftMapPanel extends FrameLayout {
     private void applyFr24Metadata(String hex, String registration, JSONObject metadata) {
         host.runOnUiThread(() -> {
             if (!ready) return;
-            String script = "window.marAircraftMetadataResult"
+            String data = metadata == null ? "{}" : metadata.toString();
+            String script = "(function(){const d=" + data + ";"
+                    + "window.marAircraftMetadataResult"
                     + "&&window.marAircraftMetadataResult("
                     + JSONObject.quote(hex == null ? "" : hex) + ","
                     + JSONObject.quote(registration == null ? "" : registration) + ","
-                    + (metadata == null ? "{}" : metadata.toString()) + ")";
+                    + "d);if(d.image&&window.marPhotoResult)window.marPhotoResult("
+                    + JSONObject.quote(hex == null ? "" : hex) + ","
+                    + JSONObject.quote(registration == null ? "" : registration)
+                    + ",d);})()";
             webView.evaluateJavascript(script, null);
         });
     }

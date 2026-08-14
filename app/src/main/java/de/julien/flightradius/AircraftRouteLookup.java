@@ -402,8 +402,7 @@ final class AircraftRouteLookup {
             throws Exception {
         if (!onGround || !completedAirborneLeg || landingAirport == null || route == null
                 || !route.optBoolean("available", false)
-                || !"?".equals(route.optString("destination"))
-                || landingAirport.code.equalsIgnoreCase(route.optString("origin"))) return route;
+                || !"?".equals(route.optString("destination"))) return route;
         return route.put("destination", landingAirport.code)
                 .put("destination_city", landingAirport.city)
                 .put("destination_name", landingAirport.name)

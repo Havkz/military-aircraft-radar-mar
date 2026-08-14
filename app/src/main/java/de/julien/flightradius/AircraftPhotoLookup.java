@@ -38,6 +38,9 @@ final class AircraftPhotoLookup {
                 planespotters = parsePlanespotters(get(
                         "https://api.planespotters.net/pub/photos/hex/" + normalizedHex),
                         normalized);
+                if (aircraftTypeMismatch(planespotters, aircraftType)) {
+                    planespotters = new JSONObject();
+                }
             }
         } catch (Exception ignored) { }
         if (planespotters.length() == 0 && !normalized.isEmpty()) {
@@ -45,6 +48,9 @@ final class AircraftPhotoLookup {
                 planespotters = parsePlanespotters(get(
                         "https://api.planespotters.net/pub/photos/reg/" + path(registration)),
                         normalized);
+                if (aircraftTypeMismatch(planespotters, aircraftType)) {
+                    planespotters = new JSONObject();
+                }
             } catch (Exception ignored) { }
         }
         String resolvedRegistration = firstMeaningful(
@@ -352,9 +358,28 @@ final class AircraftPhotoLookup {
         Matcher boeing = Pattern.compile(
                 "(?i)^Boeing (737|747|757|767|777)-([2-9])00$")
                 .matcher(description == null ? "" : description.trim());
-        if (!boeing.matches()) return "";
-        String family = boeing.group(1);
-        return "B" + family.substring(0, 2) + boeing.group(2);
+        if (boeing.matches()) {
+            String family = boeing.group(1);
+            return "B" + family.substring(0, 2) + boeing.group(2);
+        }
+        if (Pattern.compile("(?i)^Mcdonnell Douglas Dc 8 6[123].*$")
+                .matcher(description == null ? "" : description.trim()).matches()) {
+            return "DC86";
+        }
+        return "";
+    }
+
+    private static boolean aircraftTypeMismatch(JSONObject photo, String expectedType) {
+        String actual = normalizeAircraftType(photo == null
+                ? "" : photo.optString("type"));
+        String expected = normalizeAircraftType(expectedType);
+        return !actual.isEmpty() && !expected.isEmpty() && !actual.equals(expected);
+    }
+
+    private static String normalizeAircraftType(String value) {
+        String type = value == null ? "" : value.trim().toUpperCase(Locale.US)
+                .replaceAll("[^A-Z0-9]", "");
+        return type.matches("[A-Z0-9]{2,6}") ? type : "";
     }
 
     private static void copyOperatorToAirline(JSONObject result) throws Exception {

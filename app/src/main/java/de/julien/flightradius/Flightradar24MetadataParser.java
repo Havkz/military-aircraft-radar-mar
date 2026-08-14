@@ -34,6 +34,40 @@ final class Flightradar24MetadataParser {
         return result;
     }
 
+    static JSONObject parsePhoto(String html, String expectedRegistration,
+                                 String expectedType) {
+        JSONObject result = new JSONObject();
+        String expected = normalizeRegistration(expectedRegistration);
+        if (html == null || html.isEmpty() || expected.isEmpty()) return result;
+        Matcher canonical = Pattern.compile(
+                "(?is)<link[^>]+rel=[\"']canonical[\"'][^>]+href=[\"'][^\"']*/data/aircraft/([^\"'/?#]+)")
+                .matcher(html);
+        if (!canonical.find() || !expected.equals(
+                normalizeRegistration(canonical.group(1)))) return result;
+        String pageType = normalizeType(labelledValue(html, "TYPE CODE"));
+        String requestedType = normalizeType(expectedType);
+        if (!pageType.isEmpty() && !requestedType.isEmpty()
+                && !pageType.equals(requestedType)) return result;
+        Matcher photo = Pattern.compile(
+                "(?is)<span[^>]+class=[\"'][^\"']*label[^\"']*[\"'][^>]*>"
+                        + "([^<|]{0,160}?)\\|\\s*Jetphotos\\s*</span>\\s*"
+                        + "<a[^>]+href=[\"'](https://www\\.jetphotos\\.com/photo/\\d+)"
+                        + "[\"'][^>]*>\\s*<img[^>]+src=[\"']"
+                        + "(https://cdn\\.jetphotos\\.com/[^\"']+)[\"']")
+                .matcher(html);
+        if (!photo.find()) return result;
+        try {
+            result.put("image", photo.group(3).replace("&amp;", "&"));
+            result.put("link", photo.group(2));
+            result.put("source", "JetPhotos");
+            result.put("credit", cleanPhotoText(photo.group(1)));
+            result.put("registration", expectedRegistration.trim().toUpperCase(Locale.US));
+            if (!pageType.isEmpty()) result.put("type", pageType);
+            result.put("metadata_source", "Flightradar24");
+        } catch (Exception ignored) { return new JSONObject(); }
+        return result;
+    }
+
     static JSONObject parseSearch(String json, String expectedHex) {
         JSONObject result = new JSONObject();
         String hex = normalizeHex(expectedHex);
@@ -76,6 +110,7 @@ final class Flightradar24MetadataParser {
             putMeaningful(result, "description",
                     model == null ? "" : model.optString("text"));
             putMeaningful(result, "msn", aircraft.optString("msn"));
+            addJsonPhoto(result, aircraft.optJSONObject("images"));
             String airline = root.optJSONObject("airline") == null ? ""
                     : root.optJSONObject("airline").optString("name");
             putMeaningful(result, "airline", airline);
@@ -95,6 +130,27 @@ final class Flightradar24MetadataParser {
                 target.put(key, supplement.opt(key));
             }
         }
+    }
+
+    private static void addJsonPhoto(JSONObject result, JSONObject images) throws Exception {
+        JSONObject photo = firstPhoto(images == null ? null : images.optJSONArray("large"));
+        if (photo == null) {
+            photo = firstPhoto(images == null ? null : images.optJSONArray("medium"));
+        }
+        if (photo == null) {
+            photo = firstPhoto(images == null ? null : images.optJSONArray("thumbnails"));
+        }
+        if (photo == null || !photo.optString("src").startsWith(
+                "https://cdn.jetphotos.com/")) return;
+        result.put("image", photo.optString("src"));
+        result.put("link", photo.optString("link"));
+        result.put("source", "JetPhotos");
+        result.put("credit", photo.optString("copyright"));
+    }
+
+    private static JSONObject firstPhoto(JSONArray photos) {
+        return photos == null || photos.length() == 0
+                ? null : photos.optJSONObject(0);
     }
 
     private static String labelledValue(String html, String label) {
@@ -125,5 +181,17 @@ final class Flightradar24MetadataParser {
         String hex = value == null ? "" : value.replace("~", "").trim()
                 .toLowerCase(Locale.US).replaceAll("[^0-9a-f]", "");
         return hex.length() == 6 ? hex : "";
+    }
+
+    private static String normalizeType(String value) {
+        String type = value == null ? "" : value.trim().toUpperCase(Locale.US)
+                .replaceAll("[^A-Z0-9]", "");
+        return type.matches("[A-Z0-9]{2,6}") ? type : "";
+    }
+
+    private static String cleanPhotoText(String value) {
+        return value == null ? "" : value.replaceAll("(?is)<[^>]+>", " ")
+                .replace("&copy;", "").replace("&#169;", "")
+                .replace("&amp;", "&").replaceAll("\\s+", " ").trim();
     }
 }

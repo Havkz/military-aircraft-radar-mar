@@ -316,6 +316,9 @@ final class Flightradar24WebSource {
                         Flightradar24MetadataParser.parseSearch(searchJson, hex));
                 Flightradar24MetadataParser.mergeMissing(metadata,
                         Flightradar24MetadataParser.parse(html, registration));
+                Flightradar24MetadataParser.mergeMissing(metadata,
+                        Flightradar24MetadataParser.parsePhoto(
+                                html, registration, metadata.optString("type")));
             } catch (Exception ignored) { }
             if (metadataListener != null) {
                 metadataListener.onMetadata(hex, registration, metadata);
