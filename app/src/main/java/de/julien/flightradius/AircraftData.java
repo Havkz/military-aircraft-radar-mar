@@ -16,6 +16,8 @@ final class AircraftData {
     private static final double MAX_LAST_POSITION_AGE_SECONDS = 60d;
     private static final Pattern ICAO_HELICOPTER_DESCRIPTION =
             Pattern.compile("^H[0-9][A-Z]$");
+    private static final Pattern BELL_407_DESCRIPTION =
+            Pattern.compile(".*\\bBELL\\s+407\\b.*");
     private static final Pattern CALLSIGN_CONTENT = Pattern.compile(".*[A-Z0-9].*");
     private static final String[] POSITION_FIELDS = {
             "lat", "lon", "seen_pos", "lastPosition", "alt_baro", "alt_geom",
@@ -144,13 +146,16 @@ final class AircraftData {
         String type = aircraft.optString("t", "").trim();
         if (type.isEmpty()) type = aircraft.optString("type", "").trim();
         type = type.toUpperCase(Locale.US);
-        if ("G2CA".equals(type)) return true;
+        if ("G2CA".equals(type) || "B407".equals(type)
+                || ICAO_HELICOPTER_DESCRIPTION.matcher(type).matches()) return true;
         String description = (aircraft.optString("desc", "") + " "
-                + aircraft.optString("typeDescription", "")).toUpperCase(Locale.US);
+                + aircraft.optString("typeDescription", "") + " "
+                + aircraft.optString("description", "")).toUpperCase(Locale.US);
         String compactDescription = aircraft.optString("desc", "")
                 .trim().toUpperCase(Locale.US);
         return description.contains("HELICOPTER")
                 || description.contains("ROTORCRAFT")
+                || BELL_407_DESCRIPTION.matcher(description).matches()
                 || ICAO_HELICOPTER_DESCRIPTION.matcher(compactDescription).matches();
     }
 
