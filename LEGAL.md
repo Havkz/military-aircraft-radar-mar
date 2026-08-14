@@ -47,17 +47,21 @@ Airplanes.live also documents a global squawk endpoint. MAR uses it only when th
 
 ## ADS-B Exchange
 
-MAR never scrapes ADS-B Exchange. Android can query its official API only after the user supplies their own valid API key; otherwise ADS-B Exchange is used solely as an outbound aircraft-page destination. Responses are cached briefly on-device for the live map and alerts and are not published as a separate database.
+On Android, MAR loads the public ADS-B Exchange Globe map in an embedded, non-visible WebView only while MAR's own map tab is visible. The embedded map follows the same center and zoom. Aircraft already decoded and visible on that Globe map are exported on-device, accepted only when they contain a valid ICAO/Mode-S hex address and position, and merged field by field with the other live sources. The short-lived data is discarded when the map closes, the viewport changes, or it becomes stale.
+
+This automated embedded access is implemented under project-specific permission granted by ADS-B Exchange to MAR's maintainer. That permission is not part of MAR's MIT license and must not be assumed to cover forks, modified builds, redistribution, or another product. Such users must obtain their own authorization before enabling this source.
+
+Separately, Android can query the official ADS-B Exchange API only after the user supplies their own valid API key. API responses are cached briefly on-device for the live map and alerts and are not published as a separate database.
 
 With a configured official key, worldwide squawk notifications can use ADS-B Exchange's documented `sqk` endpoint as a fallback after a failed ADSB.lol request.
 
-The full plain-text name “ADS-B Exchange” is used only to identify the optional external destination. MAR does not use the ADS-B Exchange logo and does not claim affiliation, partnership, sponsorship, or endorsement.
+The full plain-text name “ADS-B Exchange” identifies the embedded source, optional authenticated API, and external destination. MAR does not use the ADS-B Exchange logo and does not claim affiliation, partnership, sponsorship, or endorsement.
 
 - ADS-B Exchange / JETNET Terms of Use: https://www.jetnet.com/legal/terms-of-use
 - ADS-B Exchange data-use policy: https://support.adsbexchange.com/hc/en-us/articles/37364077703693-What-is-ADS-B-Exchange-s-data-use-policy
 - ADS-B Exchange media and attribution guidance: https://www.adsbexchange.com/about/media-kit/
 
-ADS-B Exchange attribution and data-use requirements apply to authenticated API use and any republication. Users and distributors are responsible for using a key and plan that authorize their usage.
+ADS-B Exchange attribution and data-use requirements apply to authenticated API use and any republication. Users and distributors are responsible for ensuring that their embedded access, key, and plan authorize their usage.
 
 ## OpenStreetMap and Leaflet
 

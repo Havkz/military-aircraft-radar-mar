@@ -25,6 +25,7 @@ final class AircraftMapPanel extends FrameLayout {
     private final Activity host;
     private final WebView webView;
     private final Flightradar24WebSource flightradar24Source;
+    private final AdsbExchangeWebSource adsbExchangeWebSource;
     private final ExecutorService photoExecutor = Executors.newFixedThreadPool(2);
     private final ExecutorService traceExecutor = Executors.newFixedThreadPool(2);
     private final ExecutorService destinationExecutor = Executors.newSingleThreadExecutor();
@@ -45,6 +46,8 @@ final class AircraftMapPanel extends FrameLayout {
                 ? MARColors.DARK_BACKGROUND : MARColors.LIGHT_BACKGROUND);
         flightradar24Source = new Flightradar24WebSource(host);
         addView(flightradar24Source.view(), new LayoutParams(-1, -1));
+        adsbExchangeWebSource = new AdsbExchangeWebSource(host);
+        addView(adsbExchangeWebSource.view(), new LayoutParams(-1, -1));
         webView = new WebView(host);
         webView.setBackgroundColor(Color.TRANSPARENT);
         WebSettings settings = webView.getSettings();
@@ -156,6 +159,7 @@ final class AircraftMapPanel extends FrameLayout {
     void setPageVisible(boolean visible) {
         pageVisible = visible;
         flightradar24Source.setVisible(visible);
+        adsbExchangeWebSource.setVisible(visible);
         MonitorService.setMapVisible(pageVisible);
     }
 
@@ -182,6 +186,8 @@ final class AircraftMapPanel extends FrameLayout {
         @JavascriptInterface public void setMapViewport(
                 double latitude, double longitude, int radiusNm, int zoom) {
             host.runOnUiThread(() -> flightradar24Source.updateViewport(
+                    latitude, longitude, zoom));
+            host.runOnUiThread(() -> adsbExchangeWebSource.updateViewport(
                     latitude, longitude, zoom));
             if (!MonitorService.setMapViewport(latitude, longitude, radiusNm)) return;
             host.runOnUiThread(() -> {
@@ -291,6 +297,7 @@ final class AircraftMapPanel extends FrameLayout {
         destinationExecutor.shutdownNow();
         routeExecutor.shutdownNow();
         flightradar24Source.destroy();
+        adsbExchangeWebSource.destroy();
         webView.stopLoading();
         webView.destroy();
     }

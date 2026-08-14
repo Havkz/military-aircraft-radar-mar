@@ -65,6 +65,7 @@ public class MonitorService extends Service implements LocationListener {
     private static final long ADSB_LOL_BASE_REFRESH_MS = 1_000L;
     private static final long AIRPLANES_REFRESH_MS = 180_000L;
     private static final long FLIGHTRADAR24_CACHE_MS = 15_000L;
+    private static final long ADSBX_WEB_CACHE_MS = 15_000L;
     private static final long AIRPLANES_BUSINESS_REFRESH_MS = 1_200L;
     private static final long ADSBX_REFRESH_MS = 30_000L;
     private static final int SQUAWK_CODES_PER_REQUEST = 500;
@@ -91,6 +92,8 @@ public class MonitorService extends Service implements LocationListener {
     private static volatile long mapViewportGeneration;
     private static volatile JSONArray cachedFlightradar24 = new JSONArray();
     private static volatile long lastFlightradar24ReceivedMs;
+    private static volatile JSONArray cachedAdsbExchangeWeb = new JSONArray();
+    private static volatile long lastAdsbExchangeWebReceivedMs;
     private static final Map<String, JSONObject> mapAircraftCache = new LinkedHashMap<>();
     private static final Map<String, Long> mapAircraftCacheTimes = new HashMap<>();
 
@@ -156,6 +159,8 @@ public class MonitorService extends Service implements LocationListener {
         if (!visible) {
             cachedFlightradar24 = new JSONArray();
             lastFlightradar24ReceivedMs = 0L;
+            cachedAdsbExchangeWeb = new JSONArray();
+            lastAdsbExchangeWebReceivedMs = 0L;
         }
     }
     static void setAppVisible(boolean visible) { appVisible = visible; }
@@ -175,6 +180,8 @@ public class MonitorService extends Service implements LocationListener {
             mapViewportGeneration++;
             cachedFlightradar24 = new JSONArray();
             lastFlightradar24ReceivedMs = 0L;
+            cachedAdsbExchangeWeb = new JSONArray();
+            lastAdsbExchangeWebReceivedMs = 0L;
             pruneMapAircraftCacheToViewport();
         }
         return changed;
@@ -198,6 +205,30 @@ public class MonitorService extends Service implements LocationListener {
         }
         try {
             return new JSONArray(cachedFlightradar24.toString());
+        } catch (Exception ignored) {
+            return new JSONArray();
+        }
+    }
+
+    static synchronized void acceptAdsbExchangeWebAircraft(
+            JSONArray aircraft, long receivedAtMs) {
+        if (!mapVisible || aircraft == null) return;
+        try {
+            cachedAdsbExchangeWeb = new JSONArray(aircraft.toString());
+            lastAdsbExchangeWebReceivedMs = receivedAtMs;
+        } catch (Exception ignored) {
+            cachedAdsbExchangeWeb = new JSONArray();
+            lastAdsbExchangeWebReceivedMs = 0L;
+        }
+    }
+
+    private static synchronized JSONArray adsbExchangeWebAircraft(long now) {
+        if (!mapVisible || lastAdsbExchangeWebReceivedMs <= 0L
+                || now - lastAdsbExchangeWebReceivedMs > ADSBX_WEB_CACHE_MS) {
+            return new JSONArray();
+        }
+        try {
+            return new JSONArray(cachedAdsbExchangeWeb.toString());
         } catch (Exception ignored) {
             return new JSONArray();
         }
@@ -656,7 +687,8 @@ public class MonitorService extends Service implements LocationListener {
             if (!receivedLiveFeed && cachedAdsbLolRegional.length() == 0
                     && cachedAdsbLolAlerts.length() == 0
                     && cachedAirplanes.length() == 0 && cachedAdsbExchange.length() == 0
-                    && flightradar24Aircraft(now).length() == 0) {
+                    && flightradar24Aircraft(now).length() == 0
+                    && adsbExchangeWebAircraft(now).length() == 0) {
                 throw new IllegalStateException("No aircraft feed available");
             }
 
@@ -672,7 +704,9 @@ public class MonitorService extends Service implements LocationListener {
                     taggedCopy(cachedAdsbExchange, "ADS-B Exchange",
                             ageSeconds(now, lastAdsbExchangeFetchMs)),
                     taggedCopy(flightradar24Aircraft(now), "Flightradar24",
-                            ageSeconds(now, lastFlightradar24ReceivedMs)));
+                            ageSeconds(now, lastFlightradar24ReceivedMs)),
+                    taggedCopy(adsbExchangeWebAircraft(now), "ADS-B Exchange map",
+                            ageSeconds(now, lastAdsbExchangeWebReceivedMs)));
             JSONArray liveAircraft = new JSONArray();
             JSONArray allAircraft = new JSONArray();
             if (interactive) {
