@@ -1704,7 +1704,7 @@ public class MonitorService extends Service implements LocationListener {
         item.put("indicated_airspeed_knots",
                 finiteValueOrNull(plane.optDouble("ias", Double.NaN)));
         item.put("mach", finiteValueOrNull(plane.optDouble("mach", Double.NaN)));
-        item.put("track", plane.optDouble("track", 0));
+        item.put("track", finiteValueOrNull(plane.optDouble("track", Double.NaN)));
         item.put("true_heading",
                 finiteValueOrNull(plane.optDouble("true_heading", Double.NaN)));
         item.put("magnetic_heading",
