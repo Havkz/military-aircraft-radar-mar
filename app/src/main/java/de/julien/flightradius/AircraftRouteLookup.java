@@ -16,49 +16,69 @@ import java.net.URL;
 import java.util.Locale;
 
 final class AircraftRouteLookup {
-    private static final long CACHE_HIT_MS = 6 * 60 * 60_000L;
+    private static final long CACHE_HIT_MS = 30 * 60_000L;
     private static final long CACHE_MISS_MS = 15 * 60_000L;
     private static final String ADSBDB_API = "https://api.adsbdb.com/v0/callsign/";
     private static final String VRS_ROUTES = "https://vrs-standing-data.adsb.lol/routes/";
-    private static final String USER_AGENT = "MilitaryAircraftRadar/1.2.50 "
+    private static final String USER_AGENT = "MilitaryAircraftRadar/1.2.51 "
             + "(+https://github.com/Havkz/military-aircraft-radar-mar)";
 
     private AircraftRouteLookup() { }
 
-    static JSONObject find(Context context, String rawCallsign,
+    static JSONObject find(Context context, String rawHex, String rawCallsign,
                            double latitude, double longitude,
                            double track, double speedKnots) {
         String callsign = normalizeCallsign(rawCallsign);
-        if (callsign.isEmpty() || !validPosition(latitude, longitude)) return empty();
-        File cache = new File(context.getCacheDir(), "route-v2-" + callsign + ".json");
+        String hex = normalizeHex(rawHex);
+        if ((callsign.isEmpty() && hex.isEmpty())
+                || !validPosition(latitude, longitude)) return empty();
+        File cache = new File(context.getCacheDir(), "route-v3-"
+                + (hex.isEmpty() ? "nohex" : hex) + "-"
+                + (callsign.isEmpty() ? "nocallsign" : callsign) + ".json");
         JSONObject cached = readCache(cache);
         if (cached != null) {
             long age = Math.max(0L, System.currentTimeMillis() - cache.lastModified());
             long lifetime = cached.optBoolean("available", false)
                     ? CACHE_HIT_MS : CACHE_MISS_MS;
             if (age < lifetime) {
-                if (!cached.optBoolean("available", false)) return cached;
+                if (!cached.optBoolean("available", false) && hex.isEmpty()) return cached;
                 JSONObject validated = validatePosition(
                         cached, latitude, longitude, track, speedKnots);
                 if (validated.optBoolean("available", false)) return validated;
             }
         }
         try {
-            String prefix = callsign.substring(0, Math.min(2, callsign.length()));
-            JSONObject result = parseVrs(get(VRS_ROUTES + prefix + "/" + callsign + ".json"),
-                    callsign, latitude, longitude, track, speedKnots);
-            if (!result.optBoolean("available", false)) {
-                result = parseAdsbDb(get(ADSBDB_API + callsign), callsign,
-                        latitude, longitude, track, speedKnots);
+            JSONObject result = empty();
+            String vrsJson = "";
+            if (routeSourceCallsign(callsign)) {
+                String prefix = callsign.substring(0, Math.min(2, callsign.length()));
+                vrsJson = get(VRS_ROUTES + prefix + "/" + callsign + ".json");
+                result = parseVrs(vrsJson,
+                        callsign, latitude, longitude, track, speedKnots);
+                if (!result.optBoolean("available", false)) {
+                    result = parseAdsbDb(get(ADSBDB_API + callsign), callsign,
+                            latitude, longitude, track, speedKnots);
+                }
             }
+            AirportDirectory.Airport traceOrigin = hex.isEmpty() ? null
+                    : traceOrigin(context, AircraftTraceLookup.find(hex));
+            if (traceOrigin != null && !vrsJson.isEmpty()) {
+                JSONObject traceMatchedVrs = parseVrs(vrsJson, callsign,
+                        latitude, longitude, track, speedKnots, traceOrigin);
+                if (traceMatchedVrs.optBoolean("available", false)) {
+                    result = traceMatchedVrs;
+                }
+            }
+            result = validateOrSupplementWithTraceOrigin(result, traceOrigin);
             writeCache(cache, result);
             return result;
         } catch (Exception ignored) { return empty(); }
     }
 
-    static JSONObject find(Context context, String rawCallsign,
+    static JSONObject find(Context context, String rawHex, String rawCallsign,
                            double latitude, double longitude) {
-        return find(context, rawCallsign, latitude, longitude, Double.NaN, 0d);
+        return find(context, rawHex, rawCallsign,
+                latitude, longitude, Double.NaN, 0d);
     }
 
     static JSONObject parse(String json, String rawCallsign,
@@ -118,6 +138,14 @@ final class AircraftRouteLookup {
     static JSONObject parseVrs(String json, String rawCallsign,
                                double latitude, double longitude,
                                double track, double speedKnots) {
+        return parseVrs(json, rawCallsign, latitude, longitude,
+                track, speedKnots, null);
+    }
+
+    private static JSONObject parseVrs(String json, String rawCallsign,
+                                       double latitude, double longitude,
+                                       double track, double speedKnots,
+                                       AirportDirectory.Airport traceOrigin) {
         try {
             String callsign = normalizeCallsign(rawCallsign);
             JSONObject route = new JSONObject(json);
@@ -125,8 +153,11 @@ final class AircraftRouteLookup {
                     route.optString("callsign", "")))) return empty();
             JSONArray airports = route.optJSONArray("_airports");
             if (airports == null || airports.length() < 2) return empty();
-            JSONObject origin = airports.optJSONObject(0);
-            JSONObject destination = airports.optJSONObject(airports.length() - 1);
+            int segment = bestVrsSegment(airports, latitude, longitude,
+                    track, speedKnots, traceOrigin);
+            if (segment < 0) return empty();
+            JSONObject origin = airports.optJSONObject(segment);
+            JSONObject destination = airports.optJSONObject(segment + 1);
             String originCode = vrsAirportCode(origin);
             String destinationCode = vrsAirportCode(destination);
             double originLatitude = number(origin, "lat");
@@ -155,6 +186,103 @@ final class AircraftRouteLookup {
                     .put("destination_longitude", destinationLongitude)
                     .put("source", "ADSB.lol VRS standing data");
         } catch (Exception ignored) { return empty(); }
+    }
+
+    static int bestVrsSegment(JSONArray airports, double latitude, double longitude,
+                              double track, double speedKnots) {
+        return bestVrsSegment(airports, latitude, longitude,
+                track, speedKnots, null);
+    }
+
+    static int bestVrsSegment(JSONArray airports, double latitude,
+                              double longitude, double track, double speedKnots,
+                              AirportDirectory.Airport traceOrigin) {
+        if (airports == null || airports.length() < 2) return -1;
+        int best = -1;
+        double bestScore = Double.POSITIVE_INFINITY;
+        for (int i = 0; i < airports.length() - 1; i++) {
+            JSONObject origin = airports.optJSONObject(i);
+            JSONObject destination = airports.optJSONObject(i + 1);
+            double originLatitude = number(origin, "lat");
+            double originLongitude = number(origin, "lon");
+            double destinationLatitude = number(destination, "lat");
+            double destinationLongitude = number(destination, "lon");
+            if (!plausible(latitude, longitude, originLatitude, originLongitude,
+                    destinationLatitude, destinationLongitude)
+                    || !directionPlausible(latitude, longitude, track, speedKnots,
+                    destinationLatitude, destinationLongitude)) continue;
+            double routeKm = DistanceCalculator.kilometers(originLatitude, originLongitude,
+                    destinationLatitude, destinationLongitude);
+            double viaAircraftKm = DistanceCalculator.kilometers(
+                    originLatitude, originLongitude, latitude, longitude)
+                    + DistanceCalculator.kilometers(latitude, longitude,
+                    destinationLatitude, destinationLongitude);
+            double score = Math.max(0d, viaAircraftKm - routeKm);
+            if (traceOrigin != null) {
+                double originMismatchKm = DistanceCalculator.kilometers(
+                        originLatitude, originLongitude,
+                        traceOrigin.latitude, traceOrigin.longitude);
+                if (!Double.isNaN(originMismatchKm) && originMismatchKm <= 30d) {
+                    score -= 1_000_000d;
+                }
+            }
+            if (score < bestScore) {
+                bestScore = score;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    private static AirportDirectory.Airport traceOrigin(Context context, JSONArray trace) {
+        if (trace == null || trace.length() == 0) return null;
+        int start = AircraftTraceLookup.lastLegStart(trace);
+        AirportDirectory.Airport best = null;
+        double bestDistance = Double.POSITIVE_INFINITY;
+        int end = Math.min(trace.length(), start + 80);
+        for (int i = start; i < end; i++) {
+            JSONArray point = trace.optJSONArray(i);
+            if (point == null) continue;
+            double altitude = point.optDouble(2, Double.NaN);
+            if (!Double.isNaN(altitude) && altitude > 8_000d) break;
+            double pointLatitude = point.optDouble(0, Double.NaN);
+            double pointLongitude = point.optDouble(1, Double.NaN);
+            if (!validPosition(pointLatitude, pointLongitude)) continue;
+            AirportDirectory.Airport candidate = AirportDirectory.nearest(
+                    context, pointLatitude, pointLongitude, 30d);
+            if (candidate == null) continue;
+            double distance = DistanceCalculator.kilometers(pointLatitude, pointLongitude,
+                    candidate.latitude, candidate.longitude);
+            if (!Double.isNaN(distance) && distance < bestDistance) {
+                bestDistance = distance;
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
+    static JSONObject validateOrSupplementWithTraceOrigin(
+            JSONObject route, AirportDirectory.Airport traceOrigin) throws Exception {
+        if (traceOrigin == null) return route;
+        if (route != null && route.optBoolean("available", false)) {
+            double sourceLatitude = route.optDouble("origin_latitude", Double.NaN);
+            double sourceLongitude = route.optDouble("origin_longitude", Double.NaN);
+            double mismatchKm = DistanceCalculator.kilometers(sourceLatitude,
+                    sourceLongitude, traceOrigin.latitude, traceOrigin.longitude);
+            if (!Double.isNaN(mismatchKm) && mismatchKm <= 30d) return route;
+        }
+        return new JSONObject()
+                .put("available", true)
+                .put("verified", true)
+                .put("origin", traceOrigin.code)
+                .put("origin_city", traceOrigin.city)
+                .put("origin_name", traceOrigin.name)
+                .put("origin_latitude", traceOrigin.latitude)
+                .put("origin_longitude", traceOrigin.longitude)
+                .put("destination", "?")
+                .put("destination_city", "?")
+                .put("destination_name", "Unknown destination")
+                .put("source", "ADS-B trace + local airport directory");
     }
 
     static boolean plausible(double latitude, double longitude,
@@ -203,6 +331,9 @@ final class AircraftRouteLookup {
                                                double latitude, double longitude,
                                                double track, double speedKnots) {
         if (!route.optBoolean("available", false)) return route;
+        if ("?".equals(route.optString("destination"))
+                && validPosition(route.optDouble("origin_latitude", Double.NaN),
+                route.optDouble("origin_longitude", Double.NaN))) return route;
         return plausible(latitude, longitude,
                 route.optDouble("origin_latitude", Double.NaN),
                 route.optDouble("origin_longitude", Double.NaN),
@@ -243,6 +374,17 @@ final class AircraftRouteLookup {
         String callsign = AircraftData.normalizeCallsign(value).toUpperCase(Locale.US)
                 .replaceAll("[^A-Z0-9]", "");
         return callsign.matches("[A-Z0-9]{3,8}") ? callsign : "";
+    }
+
+    private static boolean routeSourceCallsign(String callsign) {
+        return callsign != null
+                && callsign.matches("[A-Z]{2,3}[0-9][A-Z0-9]{0,4}");
+    }
+
+    private static String normalizeHex(String value) {
+        String hex = value == null ? "" : value.replace("~", "").trim()
+                .toLowerCase(Locale.US).replaceAll("[^0-9a-f]", "");
+        return hex.length() == 6 ? hex : "";
     }
 
     private static boolean validPosition(double latitude, double longitude) {
