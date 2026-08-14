@@ -44,7 +44,7 @@ final class AircraftRouteLookup {
                 JSONObject validated = validatePosition(
                         cached, latitude, longitude, track, speedKnots);
                 if (validated.optBoolean("available", false)) return supplementLandingDestination(
-                        context, validated, latitude, longitude, onGround);
+                        context, validated, latitude, longitude, onGround, hex, null);
             }
         }
         try {
@@ -60,8 +60,9 @@ final class AircraftRouteLookup {
                             latitude, longitude, track, speedKnots);
                 }
             }
-            AirportDirectory.Airport traceOrigin = hex.isEmpty() ? null
-                    : traceOrigin(context, AircraftTraceLookup.find(hex));
+            JSONArray trace = hex.isEmpty() ? new JSONArray()
+                    : AircraftTraceLookup.find(hex);
+            AirportDirectory.Airport traceOrigin = traceOrigin(context, trace);
             if (traceOrigin != null && !vrsJson.isEmpty()) {
                 JSONObject traceMatchedVrs = parseVrs(vrsJson, callsign,
                         latitude, longitude, track, speedKnots, traceOrigin);
@@ -72,7 +73,7 @@ final class AircraftRouteLookup {
             result = validateOrSupplementWithTraceOrigin(result, traceOrigin);
             writeCache(cache, result);
             return supplementLandingDestination(
-                    context, result, latitude, longitude, onGround);
+                    context, result, latitude, longitude, onGround, hex, trace);
         } catch (Exception ignored) { return empty(); }
     }
 
@@ -377,27 +378,65 @@ final class AircraftRouteLookup {
     }
 
     private static JSONObject supplementLandingDestination(
-            Context context, JSONObject route, double latitude,
-            double longitude, boolean onGround) {
+            Context context, JSONObject route, double latitude, double longitude,
+            boolean onGround, String hex, JSONArray knownTrace) {
+        JSONArray trace = knownTrace;
+        if (onGround && route != null && "?".equals(route.optString("destination"))
+                && trace == null && hex != null && !hex.isEmpty()) {
+            trace = AircraftTraceLookup.find(hex);
+        }
+        boolean completedAirborneLeg = hasDepartedOrigin(route, trace);
         AirportDirectory.Airport landingAirport = onGround
-                && route != null && "?".equals(route.optString("destination"))
+                && completedAirborneLeg
                 ? AirportDirectory.nearest(context, latitude, longitude, 8d) : null;
         try {
-            return supplementLandingDestination(route, landingAirport, onGround);
+            return supplementLandingDestination(
+                    route, landingAirport, onGround, completedAirborneLeg);
         } catch (Exception ignored) { return route; }
     }
 
     static JSONObject supplementLandingDestination(JSONObject route,
                                                      AirportDirectory.Airport landingAirport,
-                                                     boolean onGround) throws Exception {
-        if (!onGround || landingAirport == null || route == null
+                                                     boolean onGround,
+                                                     boolean completedAirborneLeg)
+            throws Exception {
+        if (!onGround || !completedAirborneLeg || landingAirport == null || route == null
                 || !route.optBoolean("available", false)
-                || !"?".equals(route.optString("destination"))) return route;
+                || !"?".equals(route.optString("destination"))
+                || landingAirport.code.equalsIgnoreCase(route.optString("origin"))) return route;
         return route.put("destination", landingAirport.code)
                 .put("destination_city", landingAirport.city)
                 .put("destination_name", landingAirport.name)
                 .put("destination_latitude", landingAirport.latitude)
                 .put("destination_longitude", landingAirport.longitude);
+    }
+
+    static boolean hasDepartedOrigin(JSONObject route, JSONArray trace) {
+        if (route == null || trace == null || trace.length() < 2) return false;
+        double originLatitude = route.optDouble("origin_latitude", Double.NaN);
+        double originLongitude = route.optDouble("origin_longitude", Double.NaN);
+        if (!validPosition(originLatitude, originLongitude)) return false;
+        boolean groundAtOrigin = false;
+        boolean airborneAfterOrigin = false;
+        int start = AircraftTraceLookup.lastLegStart(trace);
+        for (int i = start; i < trace.length(); i++) {
+            JSONArray point = trace.optJSONArray(i);
+            if (point == null) continue;
+            double pointLatitude = point.optDouble(0, Double.NaN);
+            double pointLongitude = point.optDouble(1, Double.NaN);
+            double altitude = point.optDouble(2, Double.NaN);
+            if (!validPosition(pointLatitude, pointLongitude)
+                    || Double.isNaN(altitude)) continue;
+            double originDistance = DistanceCalculator.kilometers(
+                    originLatitude, originLongitude, pointLatitude, pointLongitude);
+            if (!groundAtOrigin && altitude <= 0d && originDistance <= 8d) {
+                groundAtOrigin = true;
+            } else if (groundAtOrigin && altitude > 0d) {
+                airborneAfterOrigin = true;
+            }
+            if (airborneAfterOrigin && originDistance > 8d) return true;
+        }
+        return false;
     }
 
     static boolean plausible(double latitude, double longitude,
