@@ -68,7 +68,6 @@ final class SettingsPanel extends ScrollView {
 
         section(root, L10n.t(host, "live_section"));
         addCustomAlerts(root);
-        addAdsbExchangeKey(root);
         addAirplanesRate(root);
         addSwitch(root, L10n.t(host, "vibration"));
 
@@ -79,7 +78,8 @@ final class SettingsPanel extends ScrollView {
         info.setOrientation(LinearLayout.VERTICAL);
         info.addView(label("Military Aircraft Radar - MAR", 16, text, Typeface.BOLD));
         TextView version = label("Version " + versionName()
-                + "\nADSB.lol + Airplanes.live\nADS-B Exchange (optional API key)",
+                + "\nADSB.lol + Airplanes.live"
+                + "\nFlightradar24 + ADS-B Exchange",
                 12, muted, Typeface.NORMAL);
         version.setPadding(0, dp(8), 0, 0);
         version.setLineSpacing(0, 1.3f);
@@ -133,16 +133,6 @@ final class SettingsPanel extends ScrollView {
                     .deleteNotificationChannel("military_alerts_v3");
         });
         row.addView(toggle);
-        root.addView(row, cardParams());
-    }
-
-    private void addAdsbExchangeKey(LinearLayout root) {
-        LinearLayout row = settingRow(MapL10n.t(host, "adsbx_key"));
-        TextView value = (TextView) row.getChildAt(1);
-        value.setText(ProviderCredentials.hasAdsbExchangeKey(host)
-                ? MapL10n.t(host, "configured") + "  ✓"
-                : MapL10n.t(host, "not_configured") + "  ›");
-        row.setOnClickListener(view -> showApiKeyEditor(value));
         root.addView(row, cardParams());
     }
 
@@ -275,7 +265,6 @@ final class SettingsPanel extends ScrollView {
         prefs.edit()
                 .remove(AppPreferences.KEY_SQUAWK_ADSB_LOL_LAST_ATTEMPT_MS)
                 .remove(AppPreferences.KEY_SQUAWK_AIRPLANES_LAST_ATTEMPT_MS)
-                .remove(AppPreferences.KEY_SQUAWK_ADSBX_LAST_ATTEMPT_MS)
                 .apply();
         refresh.run();
         if (prefs.getBoolean(AppPreferences.KEY_RUNNING, false)) {
@@ -412,24 +401,6 @@ final class SettingsPanel extends ScrollView {
     }
 
 
-    private boolean storeAdsbExchangeKey(String key, TextView value) {
-        try {
-            ProviderCredentials.setAdsbExchangeKey(host, key);
-            value.setText(ProviderCredentials.hasAdsbExchangeKey(host)
-                    ? MapL10n.t(host, "configured") + "  ✓"
-                    : MapL10n.t(host, "not_configured") + "  ›");
-            if (prefs.getBoolean(AppPreferences.KEY_RUNNING, false)) {
-                host.startService(new Intent(host, MonitorService.class)
-                        .setAction(MonitorService.ACTION_SOURCES_CHANGED));
-            }
-            return true;
-        } catch (Exception error) {
-            android.widget.Toast.makeText(host, MapL10n.t(host, "key_error"),
-                    android.widget.Toast.LENGTH_LONG).show();
-            return false;
-        }
-    }
-
     private LinearLayout modalPanel(String title) {
         LinearLayout panel = new LinearLayout(host);
         panel.setOrientation(LinearLayout.VERTICAL);
@@ -454,41 +425,6 @@ final class SettingsPanel extends ScrollView {
         header.addView(heading, new LinearLayout.LayoutParams(0, -2, 1f));
         panel.addView(header, new LinearLayout.LayoutParams(-1, dp(38)));
         return panel;
-    }
-
-    private void showApiKeyEditor(TextView value) {
-        Dialog dialog = new Dialog(host);
-        LinearLayout panel = modalPanel(MapL10n.t(host, "adsbx_key"));
-        TextView note = label(MapL10n.t(host, "key_private"), 12, muted, Typeface.NORMAL);
-        note.setLineSpacing(0, 1.2f);
-        note.setPadding(dp(2), 0, dp(2), dp(13));
-        panel.addView(note);
-        LinearLayout form = new LinearLayout(host);
-        form.setOrientation(LinearLayout.VERTICAL);
-        EditText input = ruleField(form, MapL10n.t(host, "adsbx_key"),
-                ProviderCredentials.adsbExchangeKey(host), false);
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        panel.addView(form);
-        LinearLayout actions = new LinearLayout(host);
-        actions.setGravity(Gravity.END);
-        TextView remove = modalButton(MapL10n.t(host, "remove"), false);
-        TextView cancel = modalButton(host.getString(android.R.string.cancel), false);
-        TextView save = modalButton(MapL10n.t(host, "save"), true);
-        actions.addView(remove);
-        actions.addView(cancel);
-        actions.addView(save);
-        panel.addView(actions);
-        dialog.setContentView(panel);
-        remove.setOnClickListener(button -> {
-            if (storeAdsbExchangeKey("", value)) dismissAnimated(dialog, panel);
-        });
-        cancel.setOnClickListener(button -> dismissAnimated(dialog, panel));
-        save.setOnClickListener(button -> {
-            if (storeAdsbExchangeKey(input.getText().toString(), value)) {
-                dismissAnimated(dialog, panel);
-            }
-        });
-        showModal(dialog, panel);
     }
 
     private void showConfirmation(String title, String message,

@@ -81,6 +81,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        AppPreferences.removeObsoleteAdsbExchangeKey(this);
         preferences = AppPreferences.get(this);
         L10n.applyDirection(this);
         applyPalette();

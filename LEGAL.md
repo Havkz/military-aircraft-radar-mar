@@ -51,17 +51,13 @@ On Android, MAR loads the public ADS-B Exchange Globe map in an embedded, non-vi
 
 This automated embedded access is implemented under project-specific permission granted by ADS-B Exchange to MAR's maintainer. That permission is not part of MAR's MIT license and must not be assumed to cover forks, modified builds, redistribution, or another product. Such users must obtain their own authorization before enabling this source.
 
-Separately, Android can query the official ADS-B Exchange API only after the user supplies their own valid API key. API responses are cached briefly on-device for the live map and alerts and are not published as a separate database.
-
-With a configured official key, worldwide squawk notifications can use ADS-B Exchange's documented `sqk` endpoint as a fallback after a failed ADSB.lol request.
-
-The full plain-text name “ADS-B Exchange” identifies the embedded source, optional authenticated API, and external destination. MAR does not use the ADS-B Exchange logo and does not claim affiliation, partnership, sponsorship, or endorsement.
+The full plain-text name “ADS-B Exchange” identifies the embedded source and external destination. MAR does not use the ADS-B Exchange logo and does not claim affiliation, partnership, sponsorship, or endorsement.
 
 - ADS-B Exchange / JETNET Terms of Use: https://www.jetnet.com/legal/terms-of-use
 - ADS-B Exchange data-use policy: https://support.adsbexchange.com/hc/en-us/articles/37364077703693-What-is-ADS-B-Exchange-s-data-use-policy
 - ADS-B Exchange media and attribution guidance: https://www.adsbexchange.com/about/media-kit/
 
-ADS-B Exchange attribution and data-use requirements apply to authenticated API use and any republication. Users and distributors are responsible for ensuring that their embedded access, key, and plan authorize their usage.
+ADS-B Exchange attribution and data-use requirements apply to any republication. Users and distributors are responsible for ensuring that their embedded access authorizes their usage.
 
 ## OpenStreetMap and Leaflet
 

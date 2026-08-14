@@ -67,7 +67,6 @@ public class MonitorService extends Service implements LocationListener {
     private static final long FLIGHTRADAR24_CACHE_MS = 15_000L;
     private static final long ADSBX_WEB_CACHE_MS = 15_000L;
     private static final long AIRPLANES_BUSINESS_REFRESH_MS = 1_200L;
-    private static final long ADSBX_REFRESH_MS = 30_000L;
     private static final int SQUAWK_CODES_PER_REQUEST = 500;
     private static final long MAP_AIRCRAFT_CACHE_MS = 2 * 60_000L;
     private static final int MAX_MAP_CACHE_AIRCRAFT = 10_000;
@@ -127,12 +126,10 @@ public class MonitorService extends Service implements LocationListener {
     private JSONArray cachedAdsbLolRegional = new JSONArray();
     private JSONArray cachedAdsbLolAlerts = new JSONArray();
     private JSONArray cachedAirplanes = new JSONArray();
-    private JSONArray cachedAdsbExchange = new JSONArray();
     private long lastAdsbLolMilitaryFetchMs;
     private long lastAdsbLolRegionalFetchMs;
     private long lastAdsbLolAlertsFetchMs;
     private long lastAirplanesFetchMs;
-    private long lastAdsbExchangeFetchMs;
     private final AdaptiveBackoff adsbLolBackoff = new AdaptiveBackoff();
     private final AdaptiveBackoff airplanesBackoff = new AdaptiveBackoff();
 
@@ -331,6 +328,7 @@ public class MonitorService extends Service implements LocationListener {
     @Override
     public void onCreate() {
         super.onCreate();
+        AppPreferences.removeObsoleteAdsbExchangeKey(this);
         createChannels();
         startForeground(STATUS_NOTIFICATION_ID,
                 statusNotification("INITIALIZING",
@@ -611,15 +609,14 @@ public class MonitorService extends Service implements LocationListener {
                         "https://api.adsb.lol/v2/lat/%.5f/lon/%.5f/dist/%d",
                         own.getLatitude(), own.getLongitude(), alertRadiusNm);
                 alertsFuture = networkPool.submit(
-                        () -> fetchAircraft(alertsEndpoint, null, "adsb.lol"));
+                        () -> fetchAircraft(alertsEndpoint, "adsb.lol"));
             }
             Future<JSONArray> militaryFuture = null;
             Future<JSONArray> airplanesFuture = null;
-            Future<JSONArray> adsbxFuture = null;
             int supplementalRadiusNm = Math.min(radiusNm, 250);
             if (now - lastAdsbLolMilitaryFetchMs >= ADSB_LOL_MILITARY_REFRESH_MS) {
                 militaryFuture = networkPool.submit(
-                        () -> fetchAircraft(MILITARY_ENDPOINT, null, "adsb.lol"));
+                        () -> fetchAircraft(MILITARY_ENDPOINT, "adsb.lol"));
             }
             long persistedAirplanesAttempt = AppPreferences.get(this).getLong(
                     AppPreferences.KEY_AIRPLANES_LAST_ATTEMPT_MS, 0L);
@@ -632,18 +629,8 @@ public class MonitorService extends Service implements LocationListener {
                         "https://api.airplanes.live/v2/point/%.5f/%.5f/%d",
                         queryLatitude, queryLongitude, supplementalRadiusNm);
                 airplanesFuture = networkPool.submit(
-                        () -> fetchAircraft(airplanesEndpoint, null, "airplanes.live"));
+                        () -> fetchAircraft(airplanesEndpoint, "airplanes.live"));
             }
-            String adsbxKey = ProviderCredentials.adsbExchangeKey(this);
-            if (!adsbxKey.isEmpty()
-                    && now - lastAdsbExchangeFetchMs >= ADSBX_REFRESH_MS) {
-                String adsbxEndpoint = String.format(Locale.US,
-                        "https://gateway.adsbexchange.com/api/aircraft/v2/lat/%.5f/lon/%.5f/dist/%d",
-                        queryLatitude, queryLongitude, supplementalRadiusNm);
-                adsbxFuture = networkPool.submit(
-                        () -> fetchAircraft(adsbxEndpoint, adsbxKey, "adsbexchange"));
-            }
-
             boolean receivedLiveFeed = false;
             JSONArray regional = awaitOptional(regionalFuture);
             if (regional != null) {
@@ -678,15 +665,9 @@ public class MonitorService extends Service implements LocationListener {
                 lastAirplanesFetchMs = now;
                 receivedLiveFeed = true;
             }
-            JSONArray adsbx = awaitOptional(adsbxFuture);
-            if (adsbx != null) {
-                cachedAdsbExchange = adsbx;
-                lastAdsbExchangeFetchMs = now;
-                receivedLiveFeed = true;
-            }
             if (!receivedLiveFeed && cachedAdsbLolRegional.length() == 0
                     && cachedAdsbLolAlerts.length() == 0
-                    && cachedAirplanes.length() == 0 && cachedAdsbExchange.length() == 0
+                    && cachedAirplanes.length() == 0
                     && flightradar24Aircraft(now).length() == 0
                     && adsbExchangeWebAircraft(now).length() == 0) {
                 throw new IllegalStateException("No aircraft feed available");
@@ -701,8 +682,6 @@ public class MonitorService extends Service implements LocationListener {
                             ageSeconds(now, lastAdsbLolMilitaryFetchMs)),
                     taggedCopy(cachedAirplanes, "Airplanes.live",
                             ageSeconds(now, lastAirplanesFetchMs)),
-                    taggedCopy(cachedAdsbExchange, "ADS-B Exchange",
-                            ageSeconds(now, lastAdsbExchangeFetchMs)),
                     taggedCopy(flightradar24Aircraft(now), "Flightradar24",
                             ageSeconds(now, lastFlightradar24ReceivedMs)),
                     taggedCopy(adsbExchangeWebAircraft(now), "ADS-B Exchange map",
@@ -796,7 +775,7 @@ public class MonitorService extends Service implements LocationListener {
         }
     }
 
-    private JSONArray fetchAircraft(String endpoint, String apiKey, String provider)
+    private JSONArray fetchAircraft(String endpoint, String provider)
             throws Exception {
         HttpURLConnection connection = null;
         try {
@@ -806,10 +785,6 @@ public class MonitorService extends Service implements LocationListener {
             connection.setRequestProperty("User-Agent", "MilitaryAircraftRadar/4.1");
             connection.setRequestProperty("Accept", "application/json");
             connection.setRequestProperty("Accept-Encoding", "gzip");
-            if (apiKey != null && !apiKey.isEmpty()) {
-                connection.setRequestProperty("X-Api-Key", apiKey);
-                connection.setRequestProperty("api-auth", apiKey);
-            }
             int code = connection.getResponseCode();
             if (code == 429) {
                 increaseRateLimitBackoff(provider);
@@ -837,7 +812,7 @@ public class MonitorService extends Service implements LocationListener {
                                        String isolatedHex) throws Exception {
         if (!shouldUseGlobeBox(radiusNm, isolatedHex)) {
             return fetchAircraft(mapAircraftEndpoint(
-                    latitude, longitude, radiusNm, isolatedHex), null, "adsb.lol");
+                    latitude, longitude, radiusNm, isolatedHex), "adsb.lol");
         }
         return fetchBinCraftAircraft(mapGlobeEndpoint(latitude, longitude, radiusNm));
     }
@@ -1167,14 +1142,14 @@ public class MonitorService extends Service implements LocationListener {
                 AppPreferences.KEY_SQUAWK_ADSB_LOL_LAST_ATTEMPT_MS, now).apply();
         List<String> requestedSquawks = new ArrayList<>(configuredSquawks);
         squawkFuture = squawkExecutor.submit(() -> runGlobalSquawkAlerts(
-                requestedSquawks, requestedInterval, airplanesInterval));
+                requestedSquawks, airplanesInterval));
     }
 
     private void runGlobalSquawkAlerts(List<String> configuredSquawks,
-                                       long requestedInterval, long airplanesInterval) {
+                                       long airplanesInterval) {
         JSONArray received = null;
         try {
-            received = fetchGlobalSquawkBatches("adsb.lol", configuredSquawks, null);
+            received = fetchGlobalSquawkBatches("adsb.lol", configuredSquawks);
         } catch (Exception ignored) { }
 
         // ADSB.lol provides the documented global exact-squawk endpoint and is
@@ -1182,26 +1157,13 @@ public class MonitorService extends Service implements LocationListener {
         // an empty successful response correctly means that no aircraft matched.
         long now = System.currentTimeMillis();
         android.content.SharedPreferences preferences = AppPreferences.get(this);
-        String adsbxKey = ProviderCredentials.adsbExchangeKey(this);
-        long adsbxLast = preferences.getLong(
-                AppPreferences.KEY_SQUAWK_ADSBX_LAST_ATTEMPT_MS, 0L);
-        if (received == null && !adsbxKey.isEmpty()
-                && providerDue(adsbxLast, requestedInterval, now)) {
-            preferences.edit().putLong(
-                    AppPreferences.KEY_SQUAWK_ADSBX_LAST_ATTEMPT_MS, now).apply();
-            try {
-                received = fetchGlobalSquawkBatches(
-                        "adsbexchange", configuredSquawks, adsbxKey);
-            } catch (Exception ignored) { }
-        }
         long airplanesLast = preferences.getLong(
                 AppPreferences.KEY_SQUAWK_AIRPLANES_LAST_ATTEMPT_MS, 0L);
         if (received == null && providerDue(airplanesLast, airplanesInterval, now)) {
             preferences.edit().putLong(
                     AppPreferences.KEY_SQUAWK_AIRPLANES_LAST_ATTEMPT_MS, now).apply();
             try {
-                received = fetchGlobalSquawkBatches(
-                        "airplanes.live", configuredSquawks, null);
+                received = fetchGlobalSquawkBatches("airplanes.live", configuredSquawks);
             } catch (Exception ignored) { }
         }
         if (received != null) {
@@ -1215,8 +1177,8 @@ public class MonitorService extends Service implements LocationListener {
         }
     }
 
-    private JSONArray fetchGlobalSquawkBatches(String provider, List<String> squawks,
-                                                String apiKey) throws Exception {
+    private JSONArray fetchGlobalSquawkBatches(String provider, List<String> squawks)
+            throws Exception {
         JSONArray combined = new JSONArray();
         for (int offset = 0; offset < squawks.size(); offset += SQUAWK_CODES_PER_REQUEST) {
             if (offset > 0) {
@@ -1226,7 +1188,7 @@ public class MonitorService extends Service implements LocationListener {
             int end = Math.min(squawks.size(), offset + SQUAWK_CODES_PER_REQUEST);
             String query = android.text.TextUtils.join(",", squawks.subList(offset, end));
             JSONArray batch = fetchAircraft(
-                    globalSquawkEndpoint(provider, query), apiKey, provider);
+                    globalSquawkEndpoint(provider, query), provider);
             for (int i = 0; i < batch.length(); i++) combined.put(batch.opt(i));
         }
         return combined;
@@ -1240,10 +1202,10 @@ public class MonitorService extends Service implements LocationListener {
         if ("airplanes.live".equals(provider)) {
             return "https://api.airplanes.live/v2/squawk/" + squawks;
         }
-        if ("adsbexchange".equals(provider)) {
-            return "https://gateway.adsbexchange.com/api/aircraft/v2/sqk/" + squawks;
+        if ("adsb.lol".equals(provider)) {
+            return "https://api.adsb.lol/v2/sqk/" + squawks;
         }
-        return "https://api.adsb.lol/v2/sqk/" + squawks;
+        throw new IllegalArgumentException("Unsupported squawk provider");
     }
 
     static String normalizeApiSquawk(Object rawValue) {

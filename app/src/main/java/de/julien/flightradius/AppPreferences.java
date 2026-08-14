@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 
+import java.io.File;
 import java.util.Locale;
 
 final class AppPreferences {
@@ -22,8 +23,6 @@ final class AppPreferences {
             "squawk_adsb_lol_last_attempt_ms";
     static final String KEY_SQUAWK_AIRPLANES_LAST_ATTEMPT_MS =
             "squawk_airplanes_last_attempt_ms";
-    static final String KEY_SQUAWK_ADSBX_LAST_ATTEMPT_MS =
-            "squawk_adsbx_last_attempt_ms";
     static final String KEY_SQUAWK_ACTIVE_EVENTS = "squawk_active_events";
     static final String KEY_SQUAWK_ACKNOWLEDGED_EVENTS = "squawk_acknowledged_events";
     // Kept only for migrating the legacy detail screen; no longer exposed in settings.
@@ -49,6 +48,12 @@ final class AppPreferences {
 
     static SharedPreferences get(Context context) {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    static void removeObsoleteAdsbExchangeKey(Context context) {
+        File keyFile = new File(context.getNoBackupFilesDir(), "adsbx_api_key");
+        if (keyFile.isFile()) keyFile.delete();
+        get(context).edit().remove("squawk_adsbx_last_attempt_ms").apply();
     }
 
     static boolean isDark(Context context) {
