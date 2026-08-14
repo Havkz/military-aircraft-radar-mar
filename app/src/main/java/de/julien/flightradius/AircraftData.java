@@ -4,10 +4,12 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 final class AircraftData {
@@ -47,6 +49,52 @@ final class AircraftData {
         for (JSONObject aircraft : byHex.values()) merged.put(aircraft);
         for (int i = 0; i < withoutHex.length(); i++) merged.put(withoutHex.opt(i));
         return merged;
+    }
+
+    static JSONArray mergeFr24OnlyForTisb(JSONArray flightradar24,
+                                           JSONArray... supplemental)
+            throws JSONException {
+        Set<String> restrictedHexes = tisbHexes(supplemental);
+        JSONArray[] feeds = new JSONArray[(supplemental == null ? 0 : supplemental.length) + 1];
+        feeds[0] = flightradar24;
+        for (int i = 0; supplemental != null && i < supplemental.length; i++) {
+            JSONArray filtered = new JSONArray();
+            JSONArray source = supplemental[i];
+            for (int j = 0; source != null && j < source.length(); j++) {
+                JSONObject aircraft = source.optJSONObject(j);
+                if (aircraft == null || isTisbSource(aircraft)
+                        || restrictedHexes.contains(normalizedHex(aircraft))) continue;
+                filtered.put(aircraft);
+            }
+            feeds[i + 1] = filtered;
+        }
+        return mergeByHex(feeds);
+    }
+
+    static JSONArray withoutTisbAircraft(JSONArray source) {
+        JSONArray filtered = new JSONArray();
+        Set<String> restrictedHexes = tisbHexes(source);
+        for (int i = 0; source != null && i < source.length(); i++) {
+            JSONObject aircraft = source.optJSONObject(i);
+            if (aircraft != null && !isTisbSource(aircraft)
+                    && !restrictedHexes.contains(normalizedHex(aircraft))) {
+                filtered.put(aircraft);
+            }
+        }
+        return filtered;
+    }
+
+    static Set<String> tisbHexes(JSONArray... feeds) {
+        Set<String> result = new HashSet<>();
+        if (feeds == null) return result;
+        for (JSONArray feed : feeds) {
+            for (int i = 0; feed != null && i < feed.length(); i++) {
+                JSONObject aircraft = feed.optJSONObject(i);
+                String hex = normalizedHex(aircraft);
+                if (isTisbSource(aircraft) && !hex.isEmpty()) result.add(hex);
+            }
+        }
+        return result;
     }
 
     static double[] recentPosition(JSONObject aircraft) {
@@ -169,6 +217,22 @@ final class AircraftData {
         }
         if (value instanceof JSONArray) return ((JSONArray) value).length() > 0;
         return true;
+    }
+
+    private static boolean isTisbSource(JSONObject aircraft) {
+        if (aircraft == null) return false;
+        for (String field : new String[]{"type", "data_source"}) {
+            String source = aircraft.optString(field, "").trim()
+                    .toLowerCase(Locale.US).replace('-', '_');
+            if (source.matches("tisb(?:_.*)?")) return true;
+        }
+        return false;
+    }
+
+    private static String normalizedHex(JSONObject aircraft) {
+        String hex = aircraft == null ? "" : aircraft.optString("hex", "")
+                .replace("~", "").trim().toLowerCase(Locale.US);
+        return hex.matches("[0-9a-f]{6}") ? hex : "";
     }
 
     private static void mergeSources(JSONObject existing, JSONObject incoming)

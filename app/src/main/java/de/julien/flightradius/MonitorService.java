@@ -454,7 +454,8 @@ public class MonitorService extends Service implements LocationListener {
                 if (generation != mapViewportGeneration()) return;
                 long receivedAt = System.currentTimeMillis();
                 JSONArray compact = compactMapAircraft(
-                        taggedCopy(response, "ADSB.lol", 0d),
+                        AircraftData.withoutTisbAircraft(
+                                taggedCopy(response, "ADSB.lol", 0d)),
                         latitude, longitude, radiusNm);
                 synchronized (MonitorService.class) {
                     if (generation != mapViewportGeneration) return;
@@ -640,7 +641,8 @@ public class MonitorService extends Service implements LocationListener {
                 if (expandedMap && requestMapGeneration == mapViewportGeneration()) {
                     long receivedAt = System.currentTimeMillis();
                     JSONArray immediateMapAircraft = compactMapAircraft(
-                            taggedCopy(regional, "ADSB.lol", 0d),
+                            AircraftData.withoutTisbAircraft(
+                                    taggedCopy(regional, "ADSB.lol", 0d)),
                             queryLatitude, queryLongitude, radiusNm);
                     updateMapAircraftCache(immediateMapAircraft, receivedAt);
                     publishMapAircraft(visibleMapAircraftCacheJson(receivedAt));
@@ -673,19 +675,27 @@ public class MonitorService extends Service implements LocationListener {
                 throw new IllegalStateException("No aircraft feed available");
             }
 
-            JSONArray aircraft = AircraftData.mergeByHex(
-                    taggedCopy(flightradar24Aircraft(now), "Flightradar24",
-                            ageSeconds(now, lastFlightradar24ReceivedMs)),
-                    taggedCopy(adsbExchangeWebAircraft(now), "ADS-B Exchange map",
-                            ageSeconds(now, lastAdsbExchangeWebReceivedMs)),
-                    taggedCopy(cachedAdsbLolRegional, "ADSB.lol",
-                            ageSeconds(now, lastAdsbLolRegionalFetchMs)),
-                    taggedCopy(cachedAdsbLolAlerts, "ADSB.lol alerts",
-                            ageSeconds(now, lastAdsbLolAlertsFetchMs)),
-                    taggedCopy(cachedAdsbLolMilitary, "ADSB.lol military",
-                            ageSeconds(now, lastAdsbLolMilitaryFetchMs)),
-                    taggedCopy(cachedAirplanes, "Airplanes.live",
-                            ageSeconds(now, lastAirplanesFetchMs)));
+            JSONArray flightradar24 = taggedCopy(
+                    flightradar24Aircraft(now), "Flightradar24",
+                    ageSeconds(now, lastFlightradar24ReceivedMs));
+            JSONArray adsbExchange = taggedCopy(
+                    adsbExchangeWebAircraft(now), "ADS-B Exchange map",
+                    ageSeconds(now, lastAdsbExchangeWebReceivedMs));
+            JSONArray adsbLolRegional = taggedCopy(cachedAdsbLolRegional, "ADSB.lol",
+                    ageSeconds(now, lastAdsbLolRegionalFetchMs));
+            JSONArray adsbLolAlerts = taggedCopy(cachedAdsbLolAlerts, "ADSB.lol alerts",
+                    ageSeconds(now, lastAdsbLolAlertsFetchMs));
+            JSONArray adsbLolMilitary = taggedCopy(
+                    cachedAdsbLolMilitary, "ADSB.lol military",
+                    ageSeconds(now, lastAdsbLolMilitaryFetchMs));
+            JSONArray airplanesLive = taggedCopy(cachedAirplanes, "Airplanes.live",
+                    ageSeconds(now, lastAirplanesFetchMs));
+            java.util.Set<String> fr24OnlyTisbHexes = AircraftData.tisbHexes(
+                    adsbExchange, adsbLolRegional, adsbLolAlerts,
+                    adsbLolMilitary, airplanesLive);
+            JSONArray aircraft = AircraftData.mergeFr24OnlyForTisb(
+                    flightradar24, adsbExchange, adsbLolRegional, adsbLolAlerts,
+                    adsbLolMilitary, airplanesLive);
             JSONArray liveAircraft = new JSONArray();
             JSONArray allAircraft = new JSONArray();
             if (interactive) {
@@ -754,6 +764,7 @@ public class MonitorService extends Service implements LocationListener {
             if (interactive) {
                 publishSessionHistory();
                 if (!expandedMap || requestMapGeneration == mapViewportGeneration()) {
+                    removeMapAircraftCache(fr24OnlyTisbHexes);
                     updateMapAircraftCache(allAircraft, scanTime);
                     publishMapAircraft(visibleMapAircraftCacheJson(scanTime));
                 }
@@ -938,6 +949,14 @@ public class MonitorService extends Service implements LocationListener {
             mapAircraftCacheTimes.remove(oldest);
         }
         return mapAircraftCacheJson(now);
+    }
+
+    static synchronized void removeMapAircraftCache(Set<String> hexes) {
+        if (hexes == null) return;
+        for (String hex : hexes) {
+            mapAircraftCache.remove(hex);
+            mapAircraftCacheTimes.remove(hex);
+        }
     }
 
     private static JSONObject mergeMapAircraft(JSONObject cached, JSONObject fresh) {
