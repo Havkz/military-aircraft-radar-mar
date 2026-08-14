@@ -12,11 +12,18 @@ import android.webkit.WebViewClient;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 
 final class Flightradar24WebSource {
     interface MetadataListener {
         void onMetadata(String hex, String registration, JSONObject metadata);
+    }
+
+    interface RouteListener {
+        void onRoute(String hex, String callsign, JSONObject route);
     }
 
     private static final String BASE_URL = "https://www.flightradar24.com";
@@ -29,6 +36,7 @@ final class Flightradar24WebSource {
             + "const v=pair&&pair[1];if(!v||!finite(v.latitude)||!finite(v.longitude)"
             + "||!String(v.icao||'').match(/^[0-9a-f]{6}$/i))continue;"
             + "flights.push({icao:v.icao,latitude:v.latitude,longitude:v.longitude,"
+            + "flightId:v.flightId||v.flight_id||v.id||pair[0],"
             + "callsign:v.callsign,registration:v.registration,type:v.type,"
             + "altitude:v.altitude,speed:v.speed,track:v.track,vspeed:v.vspeed,"
             + "squawk:v.squawk,onGround:v.onGround,timestamp:v.timestamp,"
@@ -43,6 +51,8 @@ final class Flightradar24WebSource {
 
     private final WebView webView;
     private final MetadataListener metadataListener;
+    private final RouteListener routeListener;
+    private final Map<String, FlightReference> flightReferences = new LinkedHashMap<>();
     private boolean pageReady;
     private boolean visible;
     private boolean loaded;
@@ -51,9 +61,17 @@ final class Flightradar24WebSource {
     private int zoom = 8;
     private String pendingMetadataHex = "";
     private String pendingMetadataRegistration = "";
+    private String pendingRouteHex = "";
+    private String pendingRouteCallsign = "";
+    private double pendingRouteLatitude = Double.NaN;
+    private double pendingRouteLongitude = Double.NaN;
+    private double pendingRouteTrack = Double.NaN;
+    private double pendingRouteSpeedKnots;
 
-    Flightradar24WebSource(Activity host, MetadataListener metadataListener) {
+    Flightradar24WebSource(Activity host, MetadataListener metadataListener,
+                           RouteListener routeListener) {
         this.metadataListener = metadataListener;
+        this.routeListener = routeListener;
         webView = new WebView(host);
         webView.setAlpha(0f);
         webView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
@@ -81,6 +99,7 @@ final class Flightradar24WebSource {
                 view.evaluateJavascript(EXPORT_HOOK, ignored -> {
                     applyViewport();
                     fetchPendingMetadata();
+                    fetchPendingRoute();
                 });
             }
 
@@ -130,6 +149,20 @@ final class Flightradar24WebSource {
         fetchPendingMetadata();
     }
 
+    void requestRoute(String rawHex, String rawCallsign,
+                      double latitude, double longitude,
+                      double track, double speedKnots) {
+        String hex = normalizeHex(rawHex);
+        if (hex.isEmpty() || !validPosition(latitude, longitude)) return;
+        pendingRouteHex = hex;
+        pendingRouteCallsign = rawCallsign == null ? "" : rawCallsign.trim();
+        pendingRouteLatitude = latitude;
+        pendingRouteLongitude = longitude;
+        pendingRouteTrack = track;
+        pendingRouteSpeedKnots = speedKnots;
+        fetchPendingRoute();
+    }
+
     void destroy() {
         webView.removeJavascriptInterface("MarFr24");
         webView.stopLoading();
@@ -167,6 +200,72 @@ final class Flightradar24WebSource {
         webView.evaluateJavascript(script, null);
     }
 
+    private void fetchPendingRoute() {
+        if (!pageReady || !visible || pendingRouteHex.isEmpty()) return;
+        String flightId = flightIdFor(pendingRouteHex);
+        if (flightId.isEmpty()) return;
+        String hex = pendingRouteHex;
+        String callsign = pendingRouteCallsign;
+        double latitude = pendingRouteLatitude;
+        double longitude = pendingRouteLongitude;
+        double track = pendingRouteTrack;
+        double speedKnots = pendingRouteSpeedKnots;
+        pendingRouteHex = "";
+        String script = "(function(){const h=" + JSONObject.quote(hex)
+                + ",c=" + JSONObject.quote(callsign)
+                + ",f=" + JSONObject.quote(flightId)
+                + ",lat=" + Double.toString(latitude)
+                + ",lon=" + Double.toString(longitude)
+                + ",tr=" + Double.toString(track)
+                + ",sp=" + Double.toString(speedKnots)
+                + ";fetch('/clickhandler/?flight='+encodeURIComponent(f),"
+                + "{credentials:'include'}).then(x=>x.ok?x.text():'')"
+                + ".then(t=>window.MarFr24&&MarFr24.submitRoute(h,c,f,lat,lon,tr,sp,t))"
+                + ".catch(()=>window.MarFr24&&MarFr24.submitRoute(h,c,f,lat,lon,tr,sp,''));})();";
+        webView.evaluateJavascript(script, null);
+    }
+
+    private synchronized void rememberFlightReferences(JSONArray aircraft, long receivedAtMs) {
+        for (int i = 0; i < aircraft.length(); i++) {
+            JSONObject item = aircraft.optJSONObject(i);
+            if (item == null) continue;
+            String hex = normalizeHex(item.optString("icao", ""));
+            String flightId = item.optString("flightId", "").trim();
+            if (!hex.isEmpty() && flightId.matches("[A-Za-z0-9_-]{4,32}")) {
+                flightReferences.remove(hex);
+                flightReferences.put(hex, new FlightReference(flightId, receivedAtMs));
+            }
+        }
+        Iterator<Map.Entry<String, FlightReference>> iterator =
+                flightReferences.entrySet().iterator();
+        while (iterator.hasNext()) {
+            FlightReference reference = iterator.next().getValue();
+            if (receivedAtMs - reference.receivedAtMs > 5 * 60_000L) iterator.remove();
+        }
+        while (flightReferences.size() > 12_000) {
+            Iterator<String> keys = flightReferences.keySet().iterator();
+            if (!keys.hasNext()) break;
+            keys.next();
+            keys.remove();
+        }
+    }
+
+    private synchronized String flightIdFor(String hex) {
+        FlightReference reference = flightReferences.get(hex);
+        if (reference == null
+                || System.currentTimeMillis() - reference.receivedAtMs > 5 * 60_000L) {
+            flightReferences.remove(hex);
+            return "";
+        }
+        return reference.flightId;
+    }
+
+    private static String normalizeHex(String value) {
+        String hex = value == null ? "" : value.replace("~", "").trim()
+                .toLowerCase(Locale.US).replaceAll("[^0-9a-f]", "");
+        return hex.length() == 6 ? hex : "";
+    }
+
     private String viewportUrl() {
         return String.format(Locale.US, BASE_URL + "/%.5f,%.5f/%d",
                 latitude, longitude, zoom);
@@ -184,9 +283,12 @@ final class Flightradar24WebSource {
             if (json == null || json.length() > 8_000_000) return;
             try {
                 long receivedAt = System.currentTimeMillis();
+                JSONArray exported = new JSONArray(json);
+                rememberFlightReferences(exported, receivedAt);
                 MonitorService.acceptFlightradar24Aircraft(
-                        Flightradar24AircraftMapper.map(new JSONArray(json), receivedAt),
+                        Flightradar24AircraftMapper.map(exported, receivedAt),
                         receivedAt);
+                webView.post(Flightradar24WebSource.this::fetchPendingRoute);
             } catch (Exception ignored) { }
         }
 
@@ -197,6 +299,27 @@ final class Flightradar24WebSource {
             if (metadataListener != null) {
                 metadataListener.onMetadata(hex, registration, metadata);
             }
+        }
+
+        @JavascriptInterface public void submitRoute(
+                String hex, String callsign, String flightId,
+                double latitude, double longitude, double track,
+                double speedKnots, String json) {
+            if (json == null || json.length() > 2_000_000) return;
+            JSONObject route = AircraftRouteLookup.parseFlightradar24(
+                    json, flightId, hex, callsign, latitude, longitude,
+                    track, speedKnots);
+            if (routeListener != null) routeListener.onRoute(hex, callsign, route);
+        }
+    }
+
+    private static final class FlightReference {
+        final String flightId;
+        final long receivedAtMs;
+
+        FlightReference(String flightId, long receivedAtMs) {
+            this.flightId = flightId;
+            this.receivedAtMs = receivedAtMs;
         }
     }
 }

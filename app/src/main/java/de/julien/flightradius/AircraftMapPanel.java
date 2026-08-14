@@ -44,7 +44,8 @@ final class AircraftMapPanel extends FrameLayout {
         this.host = host;
         setBackgroundColor(AppPreferences.isDark(host)
                 ? MARColors.DARK_BACKGROUND : MARColors.LIGHT_BACKGROUND);
-        flightradar24Source = new Flightradar24WebSource(host, this::applyFr24Metadata);
+        flightradar24Source = new Flightradar24WebSource(
+                host, this::applyFr24Metadata, this::applyFr24Route);
         addView(flightradar24Source.view(), new LayoutParams(-1, -1));
         adsbExchangeWebSource = new AdsbExchangeWebSource(host);
         addView(adsbExchangeWebSource.view(), new LayoutParams(-1, -1));
@@ -192,6 +193,17 @@ final class AircraftMapPanel extends FrameLayout {
         });
     }
 
+    private void applyFr24Route(String hex, String callsign, JSONObject route) {
+        host.runOnUiThread(() -> {
+            if (!ready) return;
+            String script = "window.marRouteResult&&window.marRouteResult("
+                    + JSONObject.quote(hex == null ? "" : hex) + ","
+                    + JSONObject.quote(callsign == null ? "" : callsign) + ","
+                    + (route == null ? "{}" : route.toString()) + ")";
+            webView.evaluateJavascript(script, null);
+        });
+    }
+
     private final class MapBridge {
         @JavascriptInterface public void setMapViewport(
                 double latitude, double longitude, int radiusNm, int zoom) {
@@ -289,6 +301,8 @@ final class AircraftMapPanel extends FrameLayout {
         @JavascriptInterface public void requestAircraftRoute(
                 String hex, String callsign, double latitude, double longitude,
                 double track, double speedKnots, boolean onGround) {
+            host.runOnUiThread(() -> flightradar24Source.requestRoute(
+                    hex, callsign, latitude, longitude, track, speedKnots));
             routeExecutor.submit(() -> {
                 JSONObject result = AircraftRouteLookup.find(
                         host, hex, callsign, latitude, longitude,

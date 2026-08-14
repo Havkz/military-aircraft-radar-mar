@@ -94,6 +94,89 @@ final class AircraftRouteLookup {
         return parseAdsbDb(json, rawCallsign, latitude, longitude, Double.NaN, 0d);
     }
 
+    static JSONObject parseFlightradar24(
+            String json, String expectedFlightId, String rawHex, String rawCallsign,
+            double latitude, double longitude, double track, double speedKnots) {
+        try {
+            String flightId = expectedFlightId == null ? "" : expectedFlightId.trim();
+            if (!flightId.matches("[A-Za-z0-9_-]{4,32}")) return empty();
+            JSONObject root = new JSONObject(json);
+            JSONObject identification = root.optJSONObject("identification");
+            if (identification == null || !flightId.equalsIgnoreCase(
+                    text(identification, "id"))) return empty();
+            JSONObject aircraft = root.optJSONObject("aircraft");
+            String expectedHex = normalizeHex(rawHex);
+            String responseHex = normalizeHex(text(aircraft, "hex"));
+            JSONObject aircraftIdentification = aircraft == null ? null
+                    : aircraft.optJSONObject("identification");
+            if (responseHex.isEmpty()) {
+                responseHex = normalizeHex(text(aircraftIdentification, "modeS"));
+            }
+            if (!expectedHex.isEmpty() && !responseHex.isEmpty()
+                    && !expectedHex.equals(responseHex)) return empty();
+            String expectedCallsign = normalizeCallsign(rawCallsign);
+            String responseCallsign = normalizeCallsign(
+                    text(identification, "callsign"));
+            if (!expectedCallsign.isEmpty() && !responseCallsign.isEmpty()
+                    && !expectedCallsign.equals(responseCallsign)) return empty();
+            JSONObject airport = root.optJSONObject("airport");
+            JSONObject origin = airport == null ? null : airport.optJSONObject("origin");
+            JSONObject destination = airport == null
+                    ? null : airport.optJSONObject("destination");
+            String originCode = flightradar24AirportCode(origin);
+            String destinationCode = flightradar24AirportCode(destination);
+            double originLatitude = flightradar24AirportNumber(origin, "latitude");
+            double originLongitude = flightradar24AirportNumber(origin, "longitude");
+            double destinationLatitude = flightradar24AirportNumber(
+                    destination, "latitude");
+            double destinationLongitude = flightradar24AirportNumber(
+                    destination, "longitude");
+            if (originCode.isEmpty() || destinationCode.isEmpty()
+                    || originCode.equals(destinationCode)
+                    || !plausible(latitude, longitude, originLatitude, originLongitude,
+                    destinationLatitude, destinationLongitude)
+                    || !directionPlausible(latitude, longitude, track, speedKnots,
+                    destinationLatitude, destinationLongitude)) return empty();
+            String callsign = responseCallsign.isEmpty()
+                    ? expectedCallsign : responseCallsign;
+            JSONObject time = root.optJSONObject("time");
+            JSONObject realTime = time == null ? null : time.optJSONObject("real");
+            JSONObject estimatedTime = time == null
+                    ? null : time.optJSONObject("estimated");
+            JSONObject scheduledTime = time == null
+                    ? null : time.optJSONObject("scheduled");
+            JSONObject otherTime = time == null ? null : time.optJSONObject("other");
+            long departureEpoch = firstPositive(
+                    numberLong(realTime, "departure"),
+                    numberLong(estimatedTime, "departure"),
+                    numberLong(scheduledTime, "departure"));
+            long arrivalEpoch = firstPositive(
+                    numberLong(otherTime, "eta"),
+                    numberLong(estimatedTime, "arrival"),
+                    numberLong(realTime, "arrival"),
+                    numberLong(scheduledTime, "arrival"));
+            JSONObject result = new JSONObject()
+                    .put("available", true)
+                    .put("verified", true)
+                    .put("callsign", callsign)
+                    .put("airline", text(root.optJSONObject("airline"), "name"))
+                    .put("origin", originCode)
+                    .put("origin_city", flightradar24AirportCity(origin))
+                    .put("origin_name", text(origin, "name"))
+                    .put("origin_latitude", originLatitude)
+                    .put("origin_longitude", originLongitude)
+                    .put("destination", destinationCode)
+                    .put("destination_city", flightradar24AirportCity(destination))
+                    .put("destination_name", text(destination, "name"))
+                    .put("destination_latitude", destinationLatitude)
+                    .put("destination_longitude", destinationLongitude)
+                    .put("source", "Flightradar24");
+            if (departureEpoch > 0L) result.put("departure_epoch", departureEpoch);
+            if (arrivalEpoch > 0L) result.put("arrival_epoch", arrivalEpoch);
+            return result;
+        } catch (Exception ignored) { return empty(); }
+    }
+
     private static JSONObject parseAdsbDb(String json, String rawCallsign,
                                           double latitude, double longitude,
                                           double track, double speedKnots) {
@@ -383,6 +466,25 @@ final class AircraftRouteLookup {
         return icao.matches("[A-Z0-9]{4}") ? icao : "";
     }
 
+    private static String flightradar24AirportCode(JSONObject airport) {
+        JSONObject code = airport == null ? null : airport.optJSONObject("code");
+        String iata = text(code, "iata").toUpperCase(Locale.US);
+        if (iata.matches("[A-Z0-9]{3}")) return iata;
+        String icao = text(code, "icao").toUpperCase(Locale.US);
+        return icao.matches("[A-Z0-9]{4}") ? icao : "";
+    }
+
+    private static double flightradar24AirportNumber(JSONObject airport, String key) {
+        JSONObject position = airport == null ? null : airport.optJSONObject("position");
+        return number(position, key);
+    }
+
+    private static String flightradar24AirportCity(JSONObject airport) {
+        JSONObject position = airport == null ? null : airport.optJSONObject("position");
+        JSONObject region = position == null ? null : position.optJSONObject("region");
+        return placeName(text(region, "city"));
+    }
+
     private static String vrsAirportCode(JSONObject airport) {
         String iata = text(airport, "iata").toUpperCase(Locale.US);
         if (iata.matches("[A-Z0-9]{3}")) return iata;
@@ -400,6 +502,15 @@ final class AircraftRouteLookup {
 
     private static double number(JSONObject object, String key) {
         return object == null ? Double.NaN : object.optDouble(key, Double.NaN);
+    }
+
+    private static long numberLong(JSONObject object, String key) {
+        return object == null ? 0L : Math.max(0L, object.optLong(key, 0L));
+    }
+
+    private static long firstPositive(long... values) {
+        for (long value : values) if (value > 0L) return value;
+        return 0L;
     }
 
     private static String normalizeCallsign(String value) {
