@@ -271,10 +271,11 @@ final class AircraftMapPanel extends FrameLayout {
 
         @JavascriptInterface public void requestAircraftRoute(
                 String hex, String callsign, double latitude, double longitude,
-                double track, double speedKnots) {
+                double track, double speedKnots, boolean onGround) {
             routeExecutor.submit(() -> {
                 JSONObject result = AircraftRouteLookup.find(
-                        host, hex, callsign, latitude, longitude, track, speedKnots);
+                        host, hex, callsign, latitude, longitude,
+                        track, speedKnots, onGround);
                 String script = "window.marRouteResult&&window.marRouteResult("
                         + JSONObject.quote(hex == null ? "" : hex) + ","
                         + JSONObject.quote(callsign == null ? "" : callsign) + ","

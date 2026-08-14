@@ -26,7 +26,7 @@ final class AircraftRouteLookup {
 
     static JSONObject find(Context context, String rawHex, String rawCallsign,
                            double latitude, double longitude,
-                           double track, double speedKnots) {
+                           double track, double speedKnots, boolean onGround) {
         String callsign = normalizeCallsign(rawCallsign);
         String hex = normalizeHex(rawHex);
         if ((callsign.isEmpty() && hex.isEmpty())
@@ -43,7 +43,8 @@ final class AircraftRouteLookup {
                 if (!cached.optBoolean("available", false) && hex.isEmpty()) return cached;
                 JSONObject validated = validatePosition(
                         cached, latitude, longitude, track, speedKnots);
-                if (validated.optBoolean("available", false)) return validated;
+                if (validated.optBoolean("available", false)) return supplementLandingDestination(
+                        context, validated, latitude, longitude, onGround);
             }
         }
         try {
@@ -70,14 +71,22 @@ final class AircraftRouteLookup {
             }
             result = validateOrSupplementWithTraceOrigin(result, traceOrigin);
             writeCache(cache, result);
-            return result;
+            return supplementLandingDestination(
+                    context, result, latitude, longitude, onGround);
         } catch (Exception ignored) { return empty(); }
+    }
+
+    static JSONObject find(Context context, String rawHex, String rawCallsign,
+                           double latitude, double longitude,
+                           double track, double speedKnots) {
+        return find(context, rawHex, rawCallsign, latitude, longitude,
+                track, speedKnots, false);
     }
 
     static JSONObject find(Context context, String rawHex, String rawCallsign,
                            double latitude, double longitude) {
         return find(context, rawHex, rawCallsign,
-                latitude, longitude, Double.NaN, 0d);
+                latitude, longitude, Double.NaN, 0d, false);
     }
 
     static JSONObject parse(String json, String rawCallsign,
@@ -282,6 +291,30 @@ final class AircraftRouteLookup {
                 .put("destination_city", "?")
                 .put("destination_name", "Unknown destination")
                 .put("source", "ADS-B trace + local airport directory");
+    }
+
+    private static JSONObject supplementLandingDestination(
+            Context context, JSONObject route, double latitude,
+            double longitude, boolean onGround) {
+        AirportDirectory.Airport landingAirport = onGround
+                && route != null && "?".equals(route.optString("destination"))
+                ? AirportDirectory.nearest(context, latitude, longitude, 8d) : null;
+        try {
+            return supplementLandingDestination(route, landingAirport, onGround);
+        } catch (Exception ignored) { return route; }
+    }
+
+    static JSONObject supplementLandingDestination(JSONObject route,
+                                                     AirportDirectory.Airport landingAirport,
+                                                     boolean onGround) throws Exception {
+        if (!onGround || landingAirport == null || route == null
+                || !route.optBoolean("available", false)
+                || !"?".equals(route.optString("destination"))) return route;
+        return route.put("destination", landingAirport.code)
+                .put("destination_city", landingAirport.city)
+                .put("destination_name", landingAirport.name)
+                .put("destination_latitude", landingAirport.latitude)
+                .put("destination_longitude", landingAirport.longitude);
     }
 
     static boolean plausible(double latitude, double longitude,
