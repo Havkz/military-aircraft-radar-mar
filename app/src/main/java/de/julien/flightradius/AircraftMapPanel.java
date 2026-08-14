@@ -24,6 +24,7 @@ import java.util.concurrent.Executors;
 final class AircraftMapPanel extends FrameLayout {
     private final Activity host;
     private final WebView webView;
+    private final Flightradar24WebSource flightradar24Source;
     private final ExecutorService photoExecutor = Executors.newFixedThreadPool(2);
     private final ExecutorService traceExecutor = Executors.newFixedThreadPool(2);
     private final ExecutorService destinationExecutor = Executors.newSingleThreadExecutor();
@@ -42,6 +43,8 @@ final class AircraftMapPanel extends FrameLayout {
         this.host = host;
         setBackgroundColor(AppPreferences.isDark(host)
                 ? MARColors.DARK_BACKGROUND : MARColors.LIGHT_BACKGROUND);
+        flightradar24Source = new Flightradar24WebSource(host);
+        addView(flightradar24Source.view(), new LayoutParams(-1, -1));
         webView = new WebView(host);
         webView.setBackgroundColor(Color.TRANSPARENT);
         WebSettings settings = webView.getSettings();
@@ -152,6 +155,7 @@ final class AircraftMapPanel extends FrameLayout {
 
     void setPageVisible(boolean visible) {
         pageVisible = visible;
+        flightradar24Source.setVisible(visible);
         MonitorService.setMapVisible(pageVisible);
     }
 
@@ -176,7 +180,9 @@ final class AircraftMapPanel extends FrameLayout {
 
     private final class MapBridge {
         @JavascriptInterface public void setMapViewport(
-                double latitude, double longitude, int radiusNm) {
+                double latitude, double longitude, int radiusNm, int zoom) {
+            host.runOnUiThread(() -> flightradar24Source.updateViewport(
+                    latitude, longitude, zoom));
             if (!MonitorService.setMapViewport(latitude, longitude, radiusNm)) return;
             host.runOnUiThread(() -> {
                 if (pageVisible && MonitorService.isRunning()) {
@@ -284,6 +290,7 @@ final class AircraftMapPanel extends FrameLayout {
         traceExecutor.shutdownNow();
         destinationExecutor.shutdownNow();
         routeExecutor.shutdownNow();
+        flightradar24Source.destroy();
         webView.stopLoading();
         webView.destroy();
     }

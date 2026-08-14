@@ -1,6 +1,6 @@
 # Privacy
 
-Last updated: August 3, 2026
+Last updated: August 14, 2026
 
 Military Aircraft Radar (MAR) is an open-source Android and iOS application. It does not include advertising, analytics, crash-reporting, or user-account SDKs, and the project maintainer does not operate a backend service for the app.
 
@@ -18,9 +18,9 @@ While monitoring is active, Android sends the device latitude and longitude plus
 
 If worldwide squawk notifications are configured, Android sends the user's list of four-digit squawk codes to the global squawk endpoints of ADSB.lol. Codes are combined into requests and checked once per minute; very large lists are split into rate-limited batches. Airplanes.live is used only as a fallback at the rate allowed by the selected plan, and ADS-B Exchange is included only when the user has configured an official API key. These worldwide requests do not include the device location. Returned aircraft are checked locally for an exact match before a notification is sent. Alert deduplication state remains in memory on the device.
 
-When the Android map tab is first opened, its WebView loads Leaflet 1.9.4 from the unpkg CDN and requests OpenStreetMap tiles for the visible area. Those services therefore receive the requested resource or tile coordinates, network metadata, and IP address. MAR does not prefetch map areas for offline use.
+When the Android map tab is first opened, its visible WebView loads Leaflet 1.9.4 from the unpkg CDN and requests OpenStreetMap tiles for the visible area. A second, non-visible WebView loads Flightradar24 at the same map center and zoom under project-specific authorization. Flightradar24 receives the visible map coordinates, normal browser and network metadata, and the connection's IP address. Valid ICAO-addressed aircraft decoded by that page are merged in memory on the device and are discarded when the map closes, changes viewport, or the data becomes stale. MAR does not prefetch map areas for offline use.
 
-When the user chooses to open an aircraft in Flightradar24 or ADS-B Exchange, Android opens the selected service's app or website with aircraft-identifying or map-position information in the link. Those services process data under their own terms and privacy policies.
+When the user chooses to open an aircraft in Flightradar24 or ADS-B Exchange, Android opens the selected service's app or website with aircraft-identifying or map-position information in the link. Those services process data under their own terms and privacy policies. The separate embedded Flightradar24 map source described above operates only while MAR's map tab is visible.
 
 When the user selects an aircraft, Android sends its ICAO/Mode-S hex code and, when available, registration and known type to Planespotters.net and Planespotting.be to obtain an identifier-specific thumbnail and missing aircraft metadata. If fields remain missing, Android may send the exact hex code or registration/serial to ADS-B.nl to obtain identifier-bound metadata such as registration, operator, type, or description. Loading a returned remote thumbnail also exposes normal network metadata and the IP address to its image host. Results are kept only in the current in-memory map session and ordinary WebView/network cache; MAR does not bulk-download any service's photo or fleet database. The separate outbound photo-search links send the same registration when explicitly opened.
 

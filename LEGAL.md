@@ -1,6 +1,6 @@
 # Legal and data-source notice
 
-Last reviewed: August 3, 2026
+Last reviewed: August 14, 2026
 
 This document describes how Military Aircraft Radar (MAR) currently interacts with external data and tracker services. It is provided for transparency and is not legal advice. Service terms and licenses may change; maintainers and distributors remain responsible for reviewing the current official terms.
 
@@ -24,13 +24,15 @@ MAR does not publish a separate aircraft database. A fork that redistributes or 
 
 ## Flightradar24
 
-MAR does not request, scrape, embed, copy, cache, or redistribute Flightradar24 data. After an explicit user action, MAR opens a public Flightradar24 URL in the installed Flightradar24 app or a web browser. Flightradar24 then displays its own service under its own terms.
+On Android, MAR loads the public Flightradar24 map in an embedded, non-visible WebView only while MAR's own map tab is visible. The embedded map follows the same center and zoom. Aircraft already decoded for that visible Flightradar24 map are exported on-device, accepted only when they contain a valid ICAO/Mode-S hex address and position, and merged field by field with the other live sources. The short-lived data is discarded when the map closes, the viewport changes, or it becomes stale.
 
-The plain-text name “Flightradar24” is used only to identify the optional external destination. MAR does not use the Flightradar24 logo and does not claim affiliation, partnership, sponsorship, or endorsement.
+This automated embedded access is implemented under project-specific permission granted by Flightradar24 to MAR's maintainer. Public Flightradar24 terms otherwise restrict automated website retrieval; the permission is not part of MAR's MIT license and must not be assumed to cover forks, modified builds, redistribution, or another product. Such users must obtain their own authorization before enabling this source.
+
+The plain-text name “Flightradar24” identifies both this source and the optional external destination. MAR does not use the Flightradar24 logo and does not claim affiliation, partnership, sponsorship, or endorsement.
 
 - Flightradar24 Terms of Service: https://www.flightradar24.com/terms-of-service
 
-Any future use of Flightradar24 content or automated access would require a new legal review and, where applicable, an authorized API agreement.
+The maintainer must keep the project-specific authorization and this implementation aligned. Material changes to access, retention, redistribution, or purpose require renewed review with Flightradar24.
 
 ## Airplanes.live
 

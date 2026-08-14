@@ -65,4 +65,4 @@ Planespotters.net, planespotting.be, and ADS-B.nl are independent external servi
 
 ## External tracker names
 
-Flightradar24 and ADS-B Exchange are independent external services. MAR uses their names only to identify optional outbound destinations and does not include their logos. All names and trademarks belong to their respective owners. See [LEGAL.md](LEGAL.md).
+Flightradar24 and ADS-B Exchange are independent external services. Android's embedded Flightradar24 visible-map source is covered by project-specific authorization described in [LEGAL.md](LEGAL.md); both names also identify optional outbound destinations. MAR does not include their logos. All names and trademarks belong to their respective owners.
