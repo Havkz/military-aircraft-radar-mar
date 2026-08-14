@@ -164,7 +164,7 @@ final class AircraftData {
                     && !"none".equals(text) && !"null".equals(text)
                     && !"undefined".equals(text)
                     && !"unknown".equals(text) && !"unknown type".equals(text)
-                    && !"no callsign".equals(text);
+                    && !"no callsign".equals(text) && !"private".equals(text);
         }
         if (value instanceof JSONArray) return ((JSONArray) value).length() > 0;
         return true;

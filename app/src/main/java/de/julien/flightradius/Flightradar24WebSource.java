@@ -15,6 +15,10 @@ import org.json.JSONObject;
 import java.util.Locale;
 
 final class Flightradar24WebSource {
+    interface MetadataListener {
+        void onMetadata(String hex, String registration, JSONObject metadata);
+    }
+
     private static final String BASE_URL = "https://www.flightradar24.com";
     private static final String EXPORT_HOOK = "(function(){"
             + "if(window.__marFr24ExportInstalled)return;"
@@ -38,14 +42,18 @@ final class Flightradar24WebSource {
             + "return entries};})();";
 
     private final WebView webView;
+    private final MetadataListener metadataListener;
     private boolean pageReady;
     private boolean visible;
     private boolean loaded;
     private double latitude = Double.NaN;
     private double longitude = Double.NaN;
     private int zoom = 8;
+    private String pendingMetadataHex = "";
+    private String pendingMetadataRegistration = "";
 
-    Flightradar24WebSource(Activity host) {
+    Flightradar24WebSource(Activity host, MetadataListener metadataListener) {
+        this.metadataListener = metadataListener;
         webView = new WebView(host);
         webView.setAlpha(0f);
         webView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
@@ -70,7 +78,10 @@ final class Flightradar24WebSource {
 
             @Override public void onPageFinished(WebView view, String url) {
                 pageReady = true;
-                view.evaluateJavascript(EXPORT_HOOK, ignored -> applyViewport());
+                view.evaluateJavascript(EXPORT_HOOK, ignored -> {
+                    applyViewport();
+                    fetchPendingMetadata();
+                });
             }
 
             @Override public boolean shouldOverrideUrlLoading(
@@ -108,6 +119,17 @@ final class Flightradar24WebSource {
         else if (pageReady) applyViewport();
     }
 
+    void requestMetadata(String rawHex, String rawRegistration) {
+        String hex = rawHex == null ? "" : rawHex.trim().toLowerCase(Locale.US);
+        String registration = rawRegistration == null ? "" : rawRegistration.trim()
+                .toUpperCase(Locale.US);
+        if (!hex.matches("[0-9a-f]{6}")
+                || !registration.matches("[A-Z0-9-]{2,12}")) return;
+        pendingMetadataHex = hex;
+        pendingMetadataRegistration = registration;
+        fetchPendingMetadata();
+    }
+
     void destroy() {
         webView.removeJavascriptInterface("MarFr24");
         webView.stopLoading();
@@ -129,6 +151,22 @@ final class Flightradar24WebSource {
         webView.evaluateJavascript(script, null);
     }
 
+    private void fetchPendingMetadata() {
+        if (!pageReady || pendingMetadataHex.isEmpty()
+                || pendingMetadataRegistration.isEmpty()) return;
+        String hex = pendingMetadataHex;
+        String registration = pendingMetadataRegistration;
+        pendingMetadataHex = "";
+        pendingMetadataRegistration = "";
+        String script = "(function(){const h=" + JSONObject.quote(hex)
+                + ",r=" + JSONObject.quote(registration)
+                + ";fetch('/data/aircraft/'+encodeURIComponent(r.toLowerCase()),"
+                + "{credentials:'include'}).then(x=>x.ok?x.text():'')"
+                + ".then(t=>window.MarFr24&&MarFr24.submitMetadata(h,r,t))"
+                + ".catch(()=>window.MarFr24&&MarFr24.submitMetadata(h,r,''));})();";
+        webView.evaluateJavascript(script, null);
+    }
+
     private String viewportUrl() {
         return String.format(Locale.US, BASE_URL + "/%.5f,%.5f/%d",
                 latitude, longitude, zoom);
@@ -141,7 +179,7 @@ final class Flightradar24WebSource {
                 && longitude >= -180d && longitude <= 180d;
     }
 
-    private static final class ExportBridge {
+    private final class ExportBridge {
         @JavascriptInterface public void submitAircraft(String json) {
             if (json == null || json.length() > 8_000_000) return;
             try {
@@ -150,6 +188,15 @@ final class Flightradar24WebSource {
                         Flightradar24AircraftMapper.map(new JSONArray(json), receivedAt),
                         receivedAt);
             } catch (Exception ignored) { }
+        }
+
+        @JavascriptInterface public void submitMetadata(
+                String hex, String registration, String html) {
+            if (html == null || html.length() > 1_000_000) return;
+            JSONObject metadata = Flightradar24MetadataParser.parse(html, registration);
+            if (metadataListener != null) {
+                metadataListener.onMetadata(hex, registration, metadata);
+            }
         }
     }
 }

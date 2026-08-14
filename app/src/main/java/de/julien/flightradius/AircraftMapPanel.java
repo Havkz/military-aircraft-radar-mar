@@ -44,7 +44,7 @@ final class AircraftMapPanel extends FrameLayout {
         this.host = host;
         setBackgroundColor(AppPreferences.isDark(host)
                 ? MARColors.DARK_BACKGROUND : MARColors.LIGHT_BACKGROUND);
-        flightradar24Source = new Flightradar24WebSource(host);
+        flightradar24Source = new Flightradar24WebSource(host, this::applyFr24Metadata);
         addView(flightradar24Source.view(), new LayoutParams(-1, -1));
         adsbExchangeWebSource = new AdsbExchangeWebSource(host);
         addView(adsbExchangeWebSource.view(), new LayoutParams(-1, -1));
@@ -180,6 +180,18 @@ final class AircraftMapPanel extends FrameLayout {
         pendingFocusHex = "";
     }
 
+    private void applyFr24Metadata(String hex, String registration, JSONObject metadata) {
+        host.runOnUiThread(() -> {
+            if (!ready) return;
+            String script = "window.marAircraftMetadataResult"
+                    + "&&window.marAircraftMetadataResult("
+                    + JSONObject.quote(hex == null ? "" : hex) + ","
+                    + JSONObject.quote(registration == null ? "" : registration) + ","
+                    + (metadata == null ? "{}" : metadata.toString()) + ")";
+            webView.evaluateJavascript(script, null);
+        });
+    }
+
     private final class MapBridge {
         @JavascriptInterface public void setMapViewport(
                 double latitude, double longitude, int radiusNm, int zoom) {
@@ -216,6 +228,11 @@ final class AircraftMapPanel extends FrameLayout {
                             .setAction(MonitorService.ACTION_VIEWPORT_CHANGED));
                 }
             });
+        }
+
+        @JavascriptInterface public void requestSelectedAircraftMetadata(
+                String hex, String registration) {
+            host.runOnUiThread(() -> flightradar24Source.requestMetadata(hex, registration));
         }
 
         @JavascriptInterface public void copyAircraftInfo(String text) {

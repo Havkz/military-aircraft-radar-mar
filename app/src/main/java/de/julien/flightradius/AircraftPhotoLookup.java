@@ -331,7 +331,7 @@ final class AircraftPhotoLookup {
                 .toUpperCase(Locale.US).replaceAll("[^A-Z0-9-]", "");
         String[] parts = slug.split("-");
         if (parts.length == 0) return "";
-        if (parts[0].matches("[A-Z0-9]{4,6}")) return parts[0];
+        if (parts[0].matches("[A-Z0-9]{4,7}")) return parts[0];
         if (parts.length > 1 && parts[0].matches("[A-Z0-9]{1,3}")
                 && parts[1].matches("[A-Z0-9]{1,5}")) {
             return parts[0] + "-" + parts[1];
