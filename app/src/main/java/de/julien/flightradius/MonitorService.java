@@ -95,6 +95,7 @@ public class MonitorService extends Service implements LocationListener {
     private static volatile long lastAdsbExchangeWebReceivedMs;
     private static final Map<String, JSONObject> mapAircraftCache = new LinkedHashMap<>();
     private static final Map<String, Long> mapAircraftCacheTimes = new HashMap<>();
+    private static final Map<String, String> fr24HexByFlightId = new LinkedHashMap<>();
 
     private static final long NOTIFICATION_ENTRY_GRACE_MS = 2 * 60_000L;
     private final Map<String, Long> notifiedInsideLastSeen = new HashMap<>();
@@ -156,6 +157,7 @@ public class MonitorService extends Service implements LocationListener {
         if (!visible) {
             cachedFlightradar24 = new JSONArray();
             lastFlightradar24ReceivedMs = 0L;
+            fr24HexByFlightId.clear();
             cachedAdsbExchangeWeb = new JSONArray();
             lastAdsbExchangeWebReceivedMs = 0L;
         }
@@ -177,6 +179,7 @@ public class MonitorService extends Service implements LocationListener {
             mapViewportGeneration++;
             cachedFlightradar24 = new JSONArray();
             lastFlightradar24ReceivedMs = 0L;
+            fr24HexByFlightId.clear();
             cachedAdsbExchangeWeb = new JSONArray();
             lastAdsbExchangeWebReceivedMs = 0L;
             pruneMapAircraftCacheToViewport();
@@ -187,12 +190,90 @@ public class MonitorService extends Service implements LocationListener {
     static synchronized void acceptFlightradar24Aircraft(JSONArray aircraft, long receivedAtMs) {
         if (!mapVisible || aircraft == null) return;
         try {
-            cachedFlightradar24 = new JSONArray(aircraft.toString());
+            cachedFlightradar24 = canonicalizeFlightradar24Aircraft(aircraft);
             lastFlightradar24ReceivedMs = receivedAtMs;
         } catch (Exception ignored) {
             cachedFlightradar24 = new JSONArray();
             lastFlightradar24ReceivedMs = 0L;
         }
+    }
+
+    static synchronized JSONArray canonicalizeFlightradar24Aircraft(JSONArray aircraft)
+            throws Exception {
+        Map<String, String> realHexes = new HashMap<>();
+        for (int i = 0; aircraft != null && i < aircraft.length(); i++) {
+            JSONObject item = aircraft.optJSONObject(i);
+            String flightId = fr24FlightId(item);
+            String hex = fr24Hex(item);
+            if (!flightId.isEmpty() && !hex.isEmpty() && !hex.startsWith("~")) {
+                realHexes.put(flightId, hex);
+            }
+        }
+
+        Map<String, JSONObject> canonical = new LinkedHashMap<>();
+        for (int i = 0; aircraft != null && i < aircraft.length(); i++) {
+            JSONObject source = aircraft.optJSONObject(i);
+            if (source == null) continue;
+            JSONObject item = new JSONObject(source.toString());
+            String flightId = fr24FlightId(item);
+            String currentHex = fr24Hex(item);
+            if (currentHex.isEmpty()) continue;
+            String previousHex = flightId.isEmpty() ? "" : fr24HexByFlightId.get(flightId);
+            String realHex = flightId.isEmpty() ? "" : realHexes.get(flightId);
+            String canonicalHex = currentHex;
+            if (currentHex.startsWith("~")) {
+                if (realHex != null && !realHex.isEmpty()) canonicalHex = realHex;
+                else if (previousHex != null && !previousHex.startsWith("~")) {
+                    canonicalHex = previousHex;
+                }
+            }
+            item.put("hex", canonicalHex);
+
+            if (!flightId.isEmpty()) {
+                removeFr24AliasFromMapCache(previousHex, canonicalHex);
+                removeFr24AliasFromMapCache(currentHex, canonicalHex);
+                fr24HexByFlightId.remove(flightId);
+                fr24HexByFlightId.put(flightId, canonicalHex);
+            }
+
+            String key = canonicalHex.replace("~", "");
+            JSONObject existing = canonical.get(key);
+            if (existing == null) {
+                canonical.put(key, item);
+            } else {
+                JSONArray merged = AircraftData.mergeByHex(
+                        new JSONArray().put(item), new JSONArray().put(existing));
+                canonical.put(key, merged.getJSONObject(0));
+            }
+        }
+        while (fr24HexByFlightId.size() > 12_000) {
+            java.util.Iterator<String> keys = fr24HexByFlightId.keySet().iterator();
+            if (!keys.hasNext()) break;
+            keys.next();
+            keys.remove();
+        }
+        JSONArray result = new JSONArray();
+        for (JSONObject item : canonical.values()) result.put(item);
+        return result;
+    }
+
+    private static String fr24FlightId(JSONObject aircraft) {
+        if (aircraft == null) return "";
+        String flightId = aircraft.optString("_fr24_flight_id", "").trim();
+        return flightId.matches("[A-Za-z0-9_-]{4,32}") ? flightId : "";
+    }
+
+    private static String fr24Hex(JSONObject aircraft) {
+        if (aircraft == null) return "";
+        String hex = aircraft.optString("hex", "").trim().toLowerCase(Locale.US);
+        return hex.matches("~?[0-9a-f]{6}") ? hex : "";
+    }
+
+    private static void removeFr24AliasFromMapCache(String alias, String canonical) {
+        if (alias == null || alias.isEmpty() || alias.equals(canonical)) return;
+        String key = alias.replace("~", "");
+        mapAircraftCache.remove(key);
+        mapAircraftCacheTimes.remove(key);
     }
 
     private static synchronized JSONArray flightradar24Aircraft(long now) {

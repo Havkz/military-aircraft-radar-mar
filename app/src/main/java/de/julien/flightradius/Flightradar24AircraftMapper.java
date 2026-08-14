@@ -36,6 +36,10 @@ final class Flightradar24AircraftMapper {
         try {
             JSONObject aircraft = new JSONObject();
             aircraft.put("hex", hex);
+            String flightId = source.optString("flightId", "").trim();
+            if (flightId.matches("[A-Za-z0-9_-]{4,32}")) {
+                aircraft.put("_fr24_flight_id", flightId);
+            }
             aircraft.put("lat", latitude);
             aircraft.put("lon", longitude);
             aircraft.put("seen_pos", positionAgeSeconds(source, receivedAtMs));

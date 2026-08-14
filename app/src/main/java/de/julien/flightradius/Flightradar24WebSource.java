@@ -58,7 +58,7 @@ final class Flightradar24WebSource {
             + "timestampMs:a?null:v.timestampMs});}return flights}"
             + "Object.entries=function(value){const entries=originalEntries(value);try{"
             + "const flights=snapshot(entries);if(flights.length){for(const flight of flights)"
-            + "pending.set(String(flight.icao).toLowerCase(),flight);if(!timer)"
+            + "pending.set(String(flight.flightId||flight.icao).toLowerCase(),flight);if(!timer)"
             + "timer=setTimeout(function(){const batch=Array.from(pending.values());"
             + "pending.clear();timer=0;if(batch.length&&window.MarFr24)"
             + "MarFr24.submitAircraft(JSON.stringify(batch));},500);}}catch(e){}"
