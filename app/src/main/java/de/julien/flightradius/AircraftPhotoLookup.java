@@ -27,6 +27,9 @@ final class AircraftPhotoLookup {
     }
 
     static JSONObject find(String hex, String registration, String aircraftType) {
+        if (isExactGroundCode(registration) || isExactGroundCode(aircraftType)) {
+            return new JSONObject();
+        }
         String normalized = normalizeRegistration(registration);
         JSONObject planespotters = new JSONObject();
         String normalizedHex = normalizeHex(hex);
@@ -491,6 +494,10 @@ final class AircraftPhotoLookup {
     private static String normalizeRegistration(String value) {
         return value == null ? "" : value.toUpperCase(Locale.US)
                 .replaceAll("[^A-Z0-9]", "");
+    }
+
+    static boolean isExactGroundCode(String value) {
+        return value != null && "GND".equals(value.trim().toUpperCase(Locale.US));
     }
 
     private static String registrationPattern(String normalizedRegistration) {
