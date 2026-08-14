@@ -52,7 +52,7 @@ final class AircraftMapPanel extends FrameLayout {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.51 (+https://github.com/Havkz/military-aircraft-radar-mar)");
+                + " MilitaryAircraftRadar/1.2.52 (+https://github.com/Havkz/military-aircraft-radar-mar)");
         webView.addJavascriptInterface(new MapBridge(), "MarNative");
         webView.setOnTouchListener((view, event) -> {
             int action = event.getActionMasked();
@@ -188,6 +188,18 @@ final class AircraftMapPanel extends FrameLayout {
 
         @JavascriptInterface public void setIsolatedAircraft(String hex) {
             if (!MonitorService.setMapIsolatedAircraft(hex)) return;
+            host.runOnUiThread(() -> {
+                if (pageVisible && MonitorService.isRunning()) {
+                    host.startService(new Intent(host, MonitorService.class)
+                            .setAction(MonitorService.ACTION_VIEWPORT_CHANGED));
+                }
+            });
+        }
+
+        @JavascriptInterface public void requestFocusedAircraft(String hex) {
+            String normalized = hex == null ? "" : hex.trim().toLowerCase(Locale.US);
+            if (!normalized.matches("[0-9a-f]{6}")) return;
+            MonitorService.setMapIsolatedAircraft(normalized);
             host.runOnUiThread(() -> {
                 if (pageVisible && MonitorService.isRunning()) {
                     host.startService(new Intent(host, MonitorService.class)

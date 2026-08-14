@@ -27,7 +27,7 @@ final class AircraftTraceLookup {
     private static final Map<String, Long> CACHE_TIMES = new HashMap<>();
     private static final Map<String, Object> LOOKUP_LOCKS = new HashMap<>();
     private static final String USER_AGENT =
-            "MilitaryAircraftRadar/1.2.51 (+https://github.com/Havkz/military-aircraft-radar-mar)";
+            "MilitaryAircraftRadar/1.2.52 (+https://github.com/Havkz/military-aircraft-radar-mar)";
 
     private AircraftTraceLookup() { }
 
