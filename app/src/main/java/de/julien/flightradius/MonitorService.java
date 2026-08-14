@@ -782,7 +782,7 @@ public class MonitorService extends Service implements LocationListener {
             connection = (HttpURLConnection) new URL(endpoint).openConnection();
             connection.setConnectTimeout(10_000);
             connection.setReadTimeout(15_000);
-            connection.setRequestProperty("User-Agent", "MilitaryAircraftRadar/4.1");
+            connection.setRequestProperty("User-Agent", NetworkUserAgent.MOBILE_BROWSER);
             connection.setRequestProperty("Accept", "application/json");
             connection.setRequestProperty("Accept-Encoding", "gzip");
             int code = connection.getResponseCode();
@@ -832,7 +832,7 @@ public class MonitorService extends Service implements LocationListener {
                     connection = (HttpURLConnection) new URL(endpoint).openConnection();
                     connection.setConnectTimeout(5_000);
                     connection.setReadTimeout(8_000);
-                    connection.setRequestProperty("User-Agent", "MilitaryAircraftRadar/4.1");
+                    connection.setRequestProperty("User-Agent", NetworkUserAgent.MOBILE_BROWSER);
                     connection.setRequestProperty("Accept", "application/octet-stream");
                     connection.setRequestProperty("Referer", "https://adsb.lol/");
                     connection.setRequestProperty("X-Requested-With", "XMLHttpRequest");
@@ -874,7 +874,7 @@ public class MonitorService extends Service implements LocationListener {
             connection.setRequestMethod("HEAD");
             connection.setConnectTimeout(5_000);
             connection.setReadTimeout(5_000);
-            connection.setRequestProperty("User-Agent", "MilitaryAircraftRadar/4.1");
+            connection.setRequestProperty("User-Agent", NetworkUserAgent.MOBILE_BROWSER);
             int code = connection.getResponseCode();
             if (code != 200) throw new IllegalStateException("ADSB.lol session HTTP " + code);
             String setCookie = connection.getHeaderField("Set-Cookie");

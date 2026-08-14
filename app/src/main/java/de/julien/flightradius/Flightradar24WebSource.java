@@ -60,8 +60,6 @@ final class Flightradar24WebSource {
         settings.setAllowContentAccess(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setUserAgentString(settings.getUserAgentString()
-                + " MilitaryAircraftRadar/1.2.54");
         webView.addJavascriptInterface(new ExportBridge(), "MarFr24");
         webView.setWebViewClient(new WebViewClient() {
             @Override public void onPageStarted(WebView view, String url,

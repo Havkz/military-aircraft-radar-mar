@@ -1,0 +1,9 @@
+package de.julien.flightradius;
+
+final class NetworkUserAgent {
+    static final String MOBILE_BROWSER = "Mozilla/5.0 (Linux; Android 10; K) "
+            + "AppleWebKit/537.36 (KHTML, like Gecko) "
+            + "Chrome/131.0.0.0 Mobile Safari/537.36";
+
+    private NetworkUserAgent() { }
+}

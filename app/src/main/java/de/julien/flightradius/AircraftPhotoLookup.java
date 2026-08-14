@@ -16,8 +16,7 @@ import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 
 final class AircraftPhotoLookup {
-    private static final String USER_AGENT =
-            "MilitaryAircraftRadar/1.2.54 (+https://github.com/Havkz/military-aircraft-radar-mar)";
+    private static final String USER_AGENT = NetworkUserAgent.MOBILE_BROWSER;
 
     private AircraftPhotoLookup() { }
 
