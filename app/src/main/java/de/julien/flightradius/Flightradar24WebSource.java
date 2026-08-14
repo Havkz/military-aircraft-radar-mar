@@ -145,11 +145,11 @@ final class Flightradar24WebSource {
     }
 
     void requestMetadata(String rawHex, String rawRegistration) {
-        String hex = rawHex == null ? "" : rawHex.trim().toLowerCase(Locale.US);
+        String hex = normalizeHex(rawHex);
         String registration = rawRegistration == null ? "" : rawRegistration.trim()
                 .toUpperCase(Locale.US);
-        if (!hex.matches("[0-9a-f]{6}")
-                || !registration.matches("[A-Z0-9-]{2,12}")) return;
+        if (hex.isEmpty() || !registration.isEmpty()
+                && !registration.matches("[A-Z0-9-]{2,12}")) return;
         pendingMetadataHex = hex;
         pendingMetadataRegistration = registration;
         fetchPendingMetadata();
@@ -191,18 +191,22 @@ final class Flightradar24WebSource {
     }
 
     private void fetchPendingMetadata() {
-        if (!pageReady || pendingMetadataHex.isEmpty()
-                || pendingMetadataRegistration.isEmpty()) return;
+        if (!pageReady || !visible || pendingMetadataHex.isEmpty()) return;
         String hex = pendingMetadataHex;
         String registration = pendingMetadataRegistration;
+        String flightId = flightIdFor(hex);
         pendingMetadataHex = "";
         pendingMetadataRegistration = "";
         String script = "(function(){const h=" + JSONObject.quote(hex)
                 + ",r=" + JSONObject.quote(registration)
-                + ";fetch('/data/aircraft/'+encodeURIComponent(r.toLowerCase()),"
-                + "{credentials:'include'}).then(x=>x.ok?x.text():'')"
-                + ".then(t=>window.MarFr24&&MarFr24.submitMetadata(h,r,t))"
-                + ".catch(()=>window.MarFr24&&MarFr24.submitMetadata(h,r,''));})();";
+                + ",f=" + JSONObject.quote(flightId)
+                + ";const get=p=>p?fetch(p,{credentials:'include'})"
+                + ".then(x=>x.ok?x.text():'').catch(()=>''):Promise.resolve('');"
+                + "Promise.all([get('/v1/search/web/find?query='"
+                + "+encodeURIComponent(h)+'&limit=20'),get(f?'/clickhandler/?flight='"
+                + "+encodeURIComponent(f):''),get(r?'/data/aircraft/'"
+                + "+encodeURIComponent(r.toLowerCase()):'')]).then(v=>window.MarFr24"
+                + "&&MarFr24.submitSelectedMetadata(h,r,v[0],v[1],v[2]));})();";
         webView.evaluateJavascript(script, null);
     }
 
@@ -294,14 +298,25 @@ final class Flightradar24WebSource {
                 MonitorService.acceptFlightradar24Aircraft(
                         Flightradar24AircraftMapper.map(exported, receivedAt),
                         receivedAt);
+                webView.post(Flightradar24WebSource.this::fetchPendingMetadata);
                 webView.post(Flightradar24WebSource.this::fetchPendingRoute);
             } catch (Exception ignored) { }
         }
 
-        @JavascriptInterface public void submitMetadata(
-                String hex, String registration, String html) {
-            if (html == null || html.length() > 1_000_000) return;
-            JSONObject metadata = Flightradar24MetadataParser.parse(html, registration);
+        @JavascriptInterface public void submitSelectedMetadata(
+                String hex, String registration, String searchJson,
+                String flightJson, String html) {
+            if (searchJson == null || searchJson.length() > 1_000_000
+                    || flightJson == null || flightJson.length() > 2_000_000
+                    || html == null || html.length() > 1_000_000) return;
+            JSONObject metadata = Flightradar24MetadataParser.parseFlightDetails(
+                    flightJson, hex);
+            try {
+                Flightradar24MetadataParser.mergeMissing(metadata,
+                        Flightradar24MetadataParser.parseSearch(searchJson, hex));
+                Flightradar24MetadataParser.mergeMissing(metadata,
+                        Flightradar24MetadataParser.parse(html, registration));
+            } catch (Exception ignored) { }
             if (metadataListener != null) {
                 metadataListener.onMetadata(hex, registration, metadata);
             }

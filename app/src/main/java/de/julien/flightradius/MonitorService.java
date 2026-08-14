@@ -674,6 +674,10 @@ public class MonitorService extends Service implements LocationListener {
             }
 
             JSONArray aircraft = AircraftData.mergeByHex(
+                    taggedCopy(flightradar24Aircraft(now), "Flightradar24",
+                            ageSeconds(now, lastFlightradar24ReceivedMs)),
+                    taggedCopy(adsbExchangeWebAircraft(now), "ADS-B Exchange map",
+                            ageSeconds(now, lastAdsbExchangeWebReceivedMs)),
                     taggedCopy(cachedAdsbLolRegional, "ADSB.lol",
                             ageSeconds(now, lastAdsbLolRegionalFetchMs)),
                     taggedCopy(cachedAdsbLolAlerts, "ADSB.lol alerts",
@@ -681,17 +685,12 @@ public class MonitorService extends Service implements LocationListener {
                     taggedCopy(cachedAdsbLolMilitary, "ADSB.lol military",
                             ageSeconds(now, lastAdsbLolMilitaryFetchMs)),
                     taggedCopy(cachedAirplanes, "Airplanes.live",
-                            ageSeconds(now, lastAirplanesFetchMs)),
-                    taggedCopy(flightradar24Aircraft(now), "Flightradar24",
-                            ageSeconds(now, lastFlightradar24ReceivedMs)),
-                    taggedCopy(adsbExchangeWebAircraft(now), "ADS-B Exchange map",
-                            ageSeconds(now, lastAdsbExchangeWebReceivedMs)));
+                            ageSeconds(now, lastAirplanesFetchMs)));
             JSONArray liveAircraft = new JSONArray();
             JSONArray allAircraft = new JSONArray();
             if (interactive) {
                 JSONArray mapAircraftSource = isolatedMapQuery
-                        ? taggedCopy(cachedAdsbLolRegional, "ADSB.lol", ageSeconds(
-                        now, lastAdsbLolRegionalFetchMs)) : aircraft;
+                        ? aircraftByHex(aircraft, isolatedHex) : aircraft;
                 allAircraft = compactMapAircraft(
                         mapAircraftSource, queryLatitude, queryLongitude, radiusNm);
             }
@@ -945,21 +944,26 @@ public class MonitorService extends Service implements LocationListener {
         if (cached == null) return fresh;
         try {
             JSONObject merged = new JSONObject(cached.toString());
+            boolean preferFreshMetadata = sourcePriority(fresh)
+                    <= sourcePriority(cached);
             java.util.Iterator<String> keys = fresh.keys();
             while (keys.hasNext()) {
                 String key = keys.next();
                 Object incoming = fresh.opt(key);
                 if ("sources".equals(key)) {
                     merged.put(key, mergedSources(
-                            merged.optJSONArray(key), fresh.optJSONArray(key)));
+                            fresh.optJSONArray(key), merged.optJSONArray(key)));
                 } else if ("db_flags".equals(key)) {
                     merged.put(key, merged.optInt(key, 0) | fresh.optInt(key, 0));
                 } else if ("military".equals(key) || "rotorcraft".equals(key)) {
                     merged.put(key, merged.optBoolean(key, false)
                             || fresh.optBoolean(key, false));
-                } else if (!mapStaticMetadataField(key)
-                        || !AircraftData.meaningful(merged.opt(key))
-                        && AircraftData.meaningful(incoming)) {
+                } else if ((preferFreshMetadata
+                        && mapStaticMetadataField(key)
+                        && AircraftData.meaningful(incoming))
+                        || !mapStaticMetadataField(key)
+                        || (!AircraftData.meaningful(merged.opt(key))
+                        && AircraftData.meaningful(incoming))) {
                     merged.put(key, incoming);
                 }
             }
@@ -977,16 +981,36 @@ public class MonitorService extends Service implements LocationListener {
                 || "metadata_source".equals(key);
     }
 
+    private static int sourcePriority(JSONObject aircraft) {
+        JSONArray sources = aircraft == null ? null : aircraft.optJSONArray("sources");
+        int priority = Integer.MAX_VALUE;
+        for (int i = 0; sources != null && i < sources.length(); i++) {
+            priority = Math.min(priority, sourcePriority(sources.optString(i, "")));
+        }
+        return priority;
+    }
+
+    private static int sourcePriority(String source) {
+        if ("Flightradar24".equalsIgnoreCase(source)) return 0;
+        if ("ADS-B Exchange map".equalsIgnoreCase(source)) return 1;
+        if (source != null && source.toLowerCase(Locale.US).startsWith("adsb.lol")) return 2;
+        if ("Airplanes.live".equalsIgnoreCase(source)) return 3;
+        return Integer.MAX_VALUE;
+    }
+
     private static JSONArray mergedSources(JSONArray first, JSONArray second) {
-        JSONArray result = new JSONArray();
+        List<String> ordered = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         for (JSONArray sources : new JSONArray[]{first, second}) {
             if (sources == null) continue;
             for (int i = 0; i < sources.length(); i++) {
                 String source = sources.optString(i, "").trim();
-                if (!source.isEmpty() && seen.add(source)) result.put(source);
+                if (!source.isEmpty() && seen.add(source)) ordered.add(source);
             }
         }
+        Collections.sort(ordered, Comparator.comparingInt(MonitorService::sourcePriority));
+        JSONArray result = new JSONArray();
+        for (String source : ordered) result.put(source);
         return result;
     }
 
@@ -1483,6 +1507,20 @@ public class MonitorService extends Service implements LocationListener {
     private JSONArray taggedCopy(JSONArray source, String label, double cacheAgeSeconds)
             throws Exception {
         return AircraftData.tagSource(new JSONArray(source.toString()), label, cacheAgeSeconds);
+    }
+
+    static JSONArray aircraftByHex(JSONArray source, String rawHex) {
+        JSONArray result = new JSONArray();
+        String hex = rawHex == null ? "" : rawHex.replace("~", "")
+                .trim().toLowerCase(Locale.US);
+        if (source == null || !hex.matches("[0-9a-f]{6}")) return result;
+        for (int i = 0; i < source.length(); i++) {
+            JSONObject aircraft = source.optJSONObject(i);
+            String candidate = aircraft == null ? "" : aircraft.optString("hex", "")
+                    .replace("~", "").trim().toLowerCase(Locale.US);
+            if (hex.equals(candidate)) result.put(aircraft);
+        }
+        return result;
     }
 
     private double ageSeconds(long now, long fetchedAt) {
