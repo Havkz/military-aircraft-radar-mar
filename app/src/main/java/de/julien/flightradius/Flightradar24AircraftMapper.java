@@ -24,8 +24,11 @@ final class Flightradar24AircraftMapper {
 
     private static JSONObject mapAircraft(JSONObject source, long receivedAtMs) {
         if (source == null) return null;
-        String hex = source.optString("icao", "").trim().toLowerCase(Locale.US);
-        if (!hex.matches("[0-9a-f]{6}")) return null;
+        String rawHex = source.optString("icao", "").trim().toLowerCase(Locale.US);
+        boolean nonIcao = rawHex.startsWith("~");
+        String normalizedHex = rawHex.replace("~", "");
+        if (!normalizedHex.matches("[0-9a-f]{6}")) return null;
+        String hex = nonIcao ? "~" + normalizedHex : normalizedHex;
         double latitude = source.optDouble("latitude", Double.NaN);
         double longitude = source.optDouble("longitude", Double.NaN);
         if (!validPosition(latitude, longitude)) return null;
