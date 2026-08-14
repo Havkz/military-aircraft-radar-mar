@@ -202,11 +202,20 @@ final class Flightradar24WebSource {
                 + ",f=" + JSONObject.quote(flightId)
                 + ";const get=p=>p?fetch(p,{credentials:'include'})"
                 + ".then(x=>x.ok?x.text():'').catch(()=>''):Promise.resolve('');"
-                + "Promise.all([get('/v1/search/web/find?query='"
-                + "+encodeURIComponent(h)+'&limit=20'),get(f?'/clickhandler/?flight='"
-                + "+encodeURIComponent(f):''),get(r?'/data/aircraft/'"
-                + "+encodeURIComponent(r.toLowerCase()):'')]).then(v=>window.MarFr24"
-                + "&&MarFr24.submitSelectedMetadata(h,r,v[0],v[1],v[2]));})();";
+                + "const norm=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'');"
+                + "get('/v1/search/web/find?query='+encodeURIComponent(h)+'&limit=20')"
+                + ".then(s=>{let rr=r;try{const j=JSON.parse(s),x=(j.results||[]).find(x=>"
+                + "x&&x.type==='aircraft'&&x.detail&&norm(x.detail.hex)===norm(h));"
+                + "if(x&&x.id)rr=String(x.id).toUpperCase()}catch(e){}"
+                + "return get(rr?'/v1/search/web/find?query='+encodeURIComponent(rr)"
+                + "+'&limit=20':'').then(sr=>{let id=f;try{const j=JSON.parse(sr),"
+                + "x=(j.results||[]).find(x=>x&&x.type==='live'&&x.detail"
+                + "&&norm(x.detail.reg)===norm(rr)&&/^[A-Za-z0-9_-]{4,32}$/.test(x.id));"
+                + "if(x)id=x.id}catch(e){}return Promise.all(["
+                + "get(id?'/clickhandler/?flight='+encodeURIComponent(id):''),"
+                + "get(rr?'/data/aircraft/'+encodeURIComponent(rr.toLowerCase()):'')])"
+                + ".then(v=>window.MarFr24&&MarFr24.submitSelectedMetadata("
+                + "h,rr,id,s,sr,v[0],v[1]))})});})();";
         webView.evaluateJavascript(script, null);
     }
 
@@ -270,6 +279,15 @@ final class Flightradar24WebSource {
         return reference.flightId;
     }
 
+    private synchronized void rememberFlightReference(
+            String rawHex, String flightId, long receivedAtMs) {
+        String hex = normalizeHex(rawHex);
+        if (hex.isEmpty() || flightId == null
+                || !flightId.matches("[A-Za-z0-9_-]{4,32}")) return;
+        flightReferences.remove(hex);
+        flightReferences.put(hex, new FlightReference(flightId, receivedAtMs));
+    }
+
     private static String normalizeHex(String value) {
         String hex = value == null ? "" : value.replace("~", "").trim()
                 .toLowerCase(Locale.US).replaceAll("[^0-9a-f]", "");
@@ -304,16 +322,26 @@ final class Flightradar24WebSource {
         }
 
         @JavascriptInterface public void submitSelectedMetadata(
-                String hex, String registration, String searchJson,
-                String flightJson, String html) {
+                String hex, String registration, String flightId, String searchJson,
+                String registrationSearchJson, String flightJson, String html) {
             if (searchJson == null || searchJson.length() > 1_000_000
+                    || registrationSearchJson == null
+                    || registrationSearchJson.length() > 1_000_000
                     || flightJson == null || flightJson.length() > 2_000_000
                     || html == null || html.length() > 1_000_000) return;
+            String verifiedFlightId = Flightradar24MetadataParser.liveFlightId(
+                    registrationSearchJson, registration);
+            if (verifiedFlightId.equals(flightId)) {
+                rememberFlightReference(hex, verifiedFlightId, System.currentTimeMillis());
+            }
             JSONObject metadata = Flightradar24MetadataParser.parseFlightDetails(
                     flightJson, hex);
             try {
                 Flightradar24MetadataParser.mergeMissing(metadata,
                         Flightradar24MetadataParser.parseSearch(searchJson, hex));
+                Flightradar24MetadataParser.mergeMissing(metadata,
+                        Flightradar24MetadataParser.parseSearch(
+                                registrationSearchJson, hex));
                 Flightradar24MetadataParser.mergeMissing(metadata,
                         Flightradar24MetadataParser.parse(html, registration));
                 Flightradar24MetadataParser.mergeMissing(metadata,
@@ -323,6 +351,7 @@ final class Flightradar24WebSource {
             if (metadataListener != null) {
                 metadataListener.onMetadata(hex, registration, metadata);
             }
+            webView.post(Flightradar24WebSource.this::fetchPendingRoute);
         }
 
         @JavascriptInterface public void submitRoute(

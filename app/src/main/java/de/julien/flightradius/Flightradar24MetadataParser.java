@@ -105,7 +105,10 @@ final class Flightradar24MetadataParser {
             if (aircraft == null || !hex.equals(normalizeHex(
                     aircraft.optString("hex")))) return result;
             JSONObject model = aircraft.optJSONObject("model");
+            JSONObject identification = root.optJSONObject("identification");
             putMeaningful(result, "registration", aircraft.optString("registration"));
+            putMeaningful(result, "callsign",
+                    identification == null ? "" : identification.optString("callsign"));
             putMeaningful(result, "type", model == null ? "" : model.optString("code"));
             putMeaningful(result, "description",
                     model == null ? "" : model.optString("text"));
@@ -113,11 +116,34 @@ final class Flightradar24MetadataParser {
             addJsonPhoto(result, aircraft.optJSONObject("images"));
             String airline = root.optJSONObject("airline") == null ? ""
                     : root.optJSONObject("airline").optString("name");
+            String owner = jsonText(root.opt("owner"));
             putMeaningful(result, "airline", airline);
-            putMeaningful(result, "operator", airline);
+            putMeaningful(result, "operator",
+                    AircraftData.meaningful(airline) ? airline : owner);
+            JSONObject status = root.optJSONObject("status");
+            putMeaningful(result, "status",
+                    status == null ? "" : status.optString("text"));
             if (result.length() > 0) result.put("metadata_source", "Flightradar24");
         } catch (Exception ignored) { return new JSONObject(); }
         return result;
+    }
+
+    static String liveFlightId(String json, String expectedRegistration) {
+        String registration = normalizeRegistration(expectedRegistration);
+        if (json == null || json.isEmpty() || registration.isEmpty()) return "";
+        try {
+            JSONArray matches = new JSONObject(json).optJSONArray("results");
+            for (int i = 0; matches != null && i < matches.length(); i++) {
+                JSONObject match = matches.optJSONObject(i);
+                JSONObject detail = match == null ? null : match.optJSONObject("detail");
+                String id = match == null ? "" : match.optString("id", "").trim();
+                if (detail != null && "live".equalsIgnoreCase(match.optString("type"))
+                        && registration.equals(normalizeRegistration(
+                        detail.optString("reg")))
+                        && id.matches("[A-Za-z0-9_-]{4,32}")) return id;
+            }
+        } catch (Exception ignored) { }
+        return "";
     }
 
     static void mergeMissing(JSONObject target, JSONObject supplement) throws Exception {
@@ -187,6 +213,16 @@ final class Flightradar24MetadataParser {
         String type = value == null ? "" : value.trim().toUpperCase(Locale.US)
                 .replaceAll("[^A-Z0-9]", "");
         return type.matches("[A-Z0-9]{2,6}") ? type : "";
+    }
+
+    private static String jsonText(Object value) {
+        if (value instanceof JSONObject) {
+            JSONObject object = (JSONObject) value;
+            String name = object.optString("name", "");
+            if (AircraftData.meaningful(name)) return name;
+            return object.optString("text", "");
+        }
+        return value instanceof String ? (String) value : "";
     }
 
     private static String cleanPhotoText(String value) {
