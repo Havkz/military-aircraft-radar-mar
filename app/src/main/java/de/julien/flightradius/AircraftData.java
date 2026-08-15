@@ -103,19 +103,10 @@ final class AircraftData {
                     JSONObject keep = aircraft.optJSONObject(keepIndex);
                     JSONObject duplicate = aircraft.optJSONObject(removeIndex);
                     String alias = normalizedHex(duplicate);
-                    JSONObject supplement = new JSONObject(duplicate.toString());
-                    supplement.put("hex", keep.optString("hex"));
-                    JSONObject merged = mergeByHex(new JSONArray().put(keep),
-                            new JSONArray().put(supplement)).getJSONObject(0);
-                    if (!alias.isEmpty() && !alias.equals(normalizedHex(merged))) {
-                        merged.put("_non_icao_alias", alias);
+                    if (!alias.isEmpty() && !alias.equals(normalizedHex(keep))) {
+                        keep.put("_non_icao_alias", alias);
                     }
-                    if (keepIndex == firstIndex) {
-                        aircraft.put(firstIndex, merged);
-                    } else {
-                        aircraft.put(secondIndex, merged);
-                        firstIndex = secondIndex;
-                    }
+                    if (keepIndex != firstIndex) firstIndex = secondIndex;
                     removed.add(removeIndex);
                 }
             }
@@ -238,19 +229,19 @@ final class AircraftData {
     }
 
     private static boolean sameMovingContact(JSONObject first, JSONObject second) {
-        if (!positionsNear(first, second, 12d)) return false;
+        if (!positionsNear(first, second, 25d)) return false;
         boolean comparedKinematics = false;
         double firstAltitude = altitudeFeet(first);
         double secondAltitude = altitudeFeet(second);
         if (!Double.isNaN(firstAltitude) && !Double.isNaN(secondAltitude)) {
             comparedKinematics = true;
-            if (Math.abs(firstAltitude - secondAltitude) > 1_500d) return false;
+            if (Math.abs(firstAltitude - secondAltitude) > 3_500d) return false;
         }
         double firstSpeed = speedKnots(first);
         double secondSpeed = speedKnots(second);
         if (!Double.isNaN(firstSpeed) && !Double.isNaN(secondSpeed)) {
             comparedKinematics = true;
-            if (Math.abs(firstSpeed - secondSpeed) > 80d) return false;
+            if (Math.abs(firstSpeed - secondSpeed) > 120d) return false;
         }
         if (firstSpeed >= 80d && secondSpeed >= 80d) {
             double firstTrack = first.optDouble("track", Double.NaN);
@@ -258,7 +249,7 @@ final class AircraftData {
             if (!Double.isNaN(firstTrack) && !Double.isNaN(secondTrack)) {
                 double difference = Math.abs(
                         ((firstTrack - secondTrack + 540d) % 360d) - 180d);
-                if (difference > 60d) return false;
+                if (difference > 75d) return false;
             }
         }
         return comparedKinematics;
