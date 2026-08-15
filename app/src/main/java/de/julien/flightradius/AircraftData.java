@@ -4,10 +4,12 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -72,7 +74,86 @@ final class AircraftData {
             }
             feeds[i + 1] = filtered;
         }
-        return mergeByHex(feeds);
+        return deduplicateCurrentContacts(mergeByHex(feeds));
+    }
+
+    static JSONArray deduplicateCurrentContacts(JSONArray aircraft) throws JSONException {
+        if (aircraft == null || aircraft.length() < 2) return aircraft;
+        Map<String, List<Integer>> byCallsign = new HashMap<>();
+        for (int i = 0; i < aircraft.length(); i++) {
+            String callsign = identityCallsign(aircraft.optJSONObject(i));
+            if (callsign.matches("[A-Z0-9]{4,8}")) {
+                byCallsign.computeIfAbsent(callsign, ignored -> new ArrayList<>()).add(i);
+            }
+        }
+        Set<Integer> removed = new HashSet<>();
+        for (List<Integer> matches : byCallsign.values()) {
+            for (int left = 0; left < matches.size(); left++) {
+                int firstIndex = matches.get(left);
+                if (removed.contains(firstIndex)) continue;
+                for (int right = left + 1; right < matches.size(); right++) {
+                    int secondIndex = matches.get(right);
+                    if (removed.contains(secondIndex)) continue;
+                    JSONObject first = aircraft.optJSONObject(firstIndex);
+                    JSONObject second = aircraft.optJSONObject(secondIndex);
+                    if (!duplicateContact(first, second)) continue;
+                    int keepIndex = duplicateIdentityScore(first)
+                            >= duplicateIdentityScore(second) ? firstIndex : secondIndex;
+                    int removeIndex = keepIndex == firstIndex ? secondIndex : firstIndex;
+                    JSONObject keep = aircraft.optJSONObject(keepIndex);
+                    JSONObject duplicate = aircraft.optJSONObject(removeIndex);
+                    String alias = normalizedHex(duplicate);
+                    JSONObject supplement = new JSONObject(duplicate.toString());
+                    supplement.put("hex", keep.optString("hex"));
+                    JSONObject merged = mergeByHex(new JSONArray().put(keep),
+                            new JSONArray().put(supplement)).getJSONObject(0);
+                    if (!alias.isEmpty() && !alias.equals(normalizedHex(merged))) {
+                        merged.put("_non_icao_alias", alias);
+                    }
+                    if (keepIndex == firstIndex) {
+                        aircraft.put(firstIndex, merged);
+                    } else {
+                        aircraft.put(secondIndex, merged);
+                        firstIndex = secondIndex;
+                    }
+                    removed.add(removeIndex);
+                }
+            }
+        }
+        JSONArray result = new JSONArray();
+        for (int i = 0; i < aircraft.length(); i++) {
+            if (!removed.contains(i)) result.put(aircraft.opt(i));
+        }
+        return result;
+    }
+
+    private static boolean duplicateContact(JSONObject first, JSONObject second) {
+        if (first == null || second == null
+                || normalizedHex(first).equals(normalizedHex(second))
+                || !sameMovingContact(first, second)
+                || !hasSource(first, "Flightradar24")
+                && !hasSource(second, "Flightradar24")) return false;
+        String firstRegistration = normalizedRegistration(first);
+        String secondRegistration = normalizedRegistration(second);
+        return isNonIcao(first) || isNonIcao(second)
+                || firstRegistration.isEmpty() || secondRegistration.isEmpty()
+                || firstRegistration.equals(secondRegistration);
+    }
+
+    private static int duplicateIdentityScore(JSONObject aircraft) {
+        int score = isNonIcao(aircraft) ? 0 : 100;
+        if (!normalizedRegistration(aircraft).isEmpty()) score += 40;
+        if (meaningful(aircraft.opt("t")) || meaningful(aircraft.opt("type"))) score += 20;
+        JSONArray sources = aircraft.optJSONArray("sources");
+        return score + (sources == null ? 0 : Math.min(10, sources.length()));
+    }
+
+    private static boolean hasSource(JSONObject aircraft, String expected) {
+        JSONArray sources = aircraft == null ? null : aircraft.optJSONArray("sources");
+        for (int i = 0; sources != null && i < sources.length(); i++) {
+            if (expected.equalsIgnoreCase(sources.optString(i))) return true;
+        }
+        return false;
     }
 
     static void resolveNonIcaoAliases(JSONArray aircraft, JSONArray... references) {
