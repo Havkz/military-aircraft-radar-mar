@@ -122,8 +122,16 @@ final class AircraftRouteLookup {
                     && !expectedCallsign.equals(responseCallsign)) return empty();
             JSONObject airport = root.optJSONObject("airport");
             JSONObject origin = airport == null ? null : airport.optJSONObject("origin");
-            JSONObject destination = airport == null
+            JSONObject scheduledDestination = airport == null
                     ? null : airport.optJSONObject("destination");
+            JSONObject actualDestination = airport == null
+                    ? null : airport.optJSONObject("real");
+            String scheduledDestinationCode = flightradar24AirportCode(
+                    scheduledDestination);
+            String actualDestinationCode = flightradar24AirportCode(actualDestination);
+            boolean diverted = !actualDestinationCode.isEmpty()
+                    && !actualDestinationCode.equals(scheduledDestinationCode);
+            JSONObject destination = diverted ? actualDestination : scheduledDestination;
             String originCode = flightradar24AirportCode(origin);
             String destinationCode = flightradar24AirportCode(destination);
             double originLatitude = flightradar24AirportNumber(origin, "latitude");
@@ -132,12 +140,7 @@ final class AircraftRouteLookup {
                     destination, "latitude");
             double destinationLongitude = flightradar24AirportNumber(
                     destination, "longitude");
-            if (originCode.isEmpty() || destinationCode.isEmpty()
-                    || originCode.equals(destinationCode)
-                    || !plausible(latitude, longitude, originLatitude, originLongitude,
-                    destinationLatitude, destinationLongitude)
-                    || !directionPlausible(latitude, longitude, track, speedKnots,
-                    destinationLatitude, destinationLongitude)) return empty();
+            if (originCode.isEmpty() || destinationCode.isEmpty()) return empty();
             String callsign = responseCallsign.isEmpty()
                     ? expectedCallsign : responseCallsign;
             JSONObject time = root.optJSONObject("time");
@@ -164,14 +167,26 @@ final class AircraftRouteLookup {
                     .put("origin", originCode)
                     .put("origin_city", flightradar24AirportCity(origin))
                     .put("origin_name", text(origin, "name"))
-                    .put("origin_latitude", originLatitude)
-                    .put("origin_longitude", originLongitude)
                     .put("destination", destinationCode)
                     .put("destination_city", flightradar24AirportCity(destination))
                     .put("destination_name", text(destination, "name"))
-                    .put("destination_latitude", destinationLatitude)
-                    .put("destination_longitude", destinationLongitude)
                     .put("source", "Flightradar24");
+            if (validPosition(originLatitude, originLongitude)) {
+                result.put("origin_latitude", originLatitude)
+                        .put("origin_longitude", originLongitude);
+            }
+            if (validPosition(destinationLatitude, destinationLongitude)) {
+                result.put("destination_latitude", destinationLatitude)
+                        .put("destination_longitude", destinationLongitude);
+            }
+            if (diverted) {
+                result.put("diverted", true)
+                        .put("original_destination", scheduledDestinationCode)
+                        .put("original_destination_city",
+                                flightradar24AirportCity(scheduledDestination))
+                        .put("original_destination_name",
+                                text(scheduledDestination, "name"));
+            }
             if (departureEpoch > 0L) result.put("departure_epoch", departureEpoch);
             if (arrivalEpoch > 0L) result.put("arrival_epoch", arrivalEpoch);
             return result;
