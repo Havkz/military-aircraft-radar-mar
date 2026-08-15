@@ -1012,12 +1012,30 @@ public class MonitorService extends Service implements LocationListener {
 
     static synchronized JSONArray updateMapAircraftCache(JSONArray freshAircraft, long now) {
         if (freshAircraft != null) {
+            JSONArray cachedAircraft = mapAircraftCacheJson(now);
+            AircraftData.resolveNonIcaoAliases(cachedAircraft, freshAircraft);
+            for (int i = 0; i < cachedAircraft.length(); i++) {
+                JSONObject cached = cachedAircraft.optJSONObject(i);
+                String alias = cached == null ? "" : cached.optString(
+                        "_non_icao_alias", "").trim().toLowerCase(Locale.US);
+                if (!alias.matches("[0-9a-f]{6}")) continue;
+                mapAircraftCache.remove(alias);
+                mapAircraftCacheTimes.remove(alias);
+            }
+            AircraftData.resolveNonIcaoAliases(
+                    freshAircraft, freshAircraft, cachedAircraft);
             for (int i = 0; i < freshAircraft.length(); i++) {
                 JSONObject aircraft = freshAircraft.optJSONObject(i);
                 if (aircraft == null) continue;
                 String hex = aircraft.optString("hex", "").replace("~", "")
                         .trim().toLowerCase(Locale.US);
                 if (hex.isEmpty() || "unknown".equals(hex)) continue;
+                String alias = aircraft.optString("_non_icao_alias", "")
+                        .trim().toLowerCase(Locale.US);
+                if (alias.matches("[0-9a-f]{6}") && !alias.equals(hex)) {
+                    mapAircraftCache.remove(alias);
+                    mapAircraftCacheTimes.remove(alias);
+                }
                 JSONObject cached = mapAircraftCache.get(hex);
                 mapAircraftCache.remove(hex);
                 mapAircraftCache.put(hex, mergeMapAircraft(cached, aircraft));
@@ -1801,6 +1819,11 @@ public class MonitorService extends Service implements LocationListener {
         JSONObject item = new JSONObject();
         item.put("hex", hex);
         item.put("non_icao", plane.optString("hex", "").startsWith("~"));
+        String nonIcaoAlias = plane.optString("_non_icao_alias", "")
+                .trim().toLowerCase(Locale.US);
+        if (nonIcaoAlias.matches("[0-9a-f]{6}")) {
+            item.put("_non_icao_alias", nonIcaoAlias);
+        }
         item.put("callsign", callsign);
         item.put("display_name", AircraftData.displayName(plane));
         item.put("registration", firstAircraftText(

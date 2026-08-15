@@ -4,6 +4,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -56,6 +57,7 @@ final class AircraftData {
     static JSONArray mergeFr24OnlyForTisb(JSONArray flightradar24,
                                            JSONArray... supplemental)
             throws JSONException {
+        resolveNonIcaoAliases(flightradar24, supplemental);
         Set<String> restrictedHexes = tisbHexes(supplemental);
         JSONArray[] feeds = new JSONArray[(supplemental == null ? 0 : supplemental.length) + 1];
         feeds[0] = flightradar24;
@@ -71,6 +73,166 @@ final class AircraftData {
             feeds[i + 1] = filtered;
         }
         return mergeByHex(feeds);
+    }
+
+    static void resolveNonIcaoAliases(JSONArray aircraft, JSONArray... references) {
+        if (aircraft == null) return;
+        Map<String, Map<String, JSONObject>> byRegistration = new HashMap<>();
+        Map<String, Map<String, JSONObject>> byCallsign = new HashMap<>();
+        if (references != null) {
+            for (JSONArray reference : references) {
+                for (int i = 0; reference != null && i < reference.length(); i++) {
+                    JSONObject candidate = reference.optJSONObject(i);
+                    String hex = normalizedHex(candidate);
+                    if (candidate == null || hex.isEmpty()
+                            || isNonIcao(candidate) || isTisbSource(candidate)) continue;
+                    indexCandidate(byRegistration, normalizedRegistration(candidate),
+                            hex, candidate);
+                    indexCandidate(byCallsign, identityCallsign(candidate), hex, candidate);
+                }
+            }
+        }
+        for (int i = 0; i < aircraft.length(); i++) {
+            JSONObject synthetic = aircraft.optJSONObject(i);
+            String alias = normalizedHex(synthetic);
+            if (synthetic == null || alias.isEmpty()
+                    || !isNonIcao(synthetic)) continue;
+            String realHex = uniqueMatchingRealHex(
+                    synthetic, byRegistration, byCallsign);
+            if (realHex.isEmpty() || realHex.equals(alias)) continue;
+            try {
+                synthetic.put("_non_icao_alias", alias);
+                synthetic.put("hex", realHex);
+                if (synthetic.has("non_icao")) synthetic.put("non_icao", false);
+            } catch (JSONException ignored) { }
+        }
+    }
+
+    private static void indexCandidate(
+            Map<String, Map<String, JSONObject>> index, String identity,
+            String hex, JSONObject candidate) {
+        if (identity.isEmpty()) return;
+        Map<String, JSONObject> matches = index.get(identity);
+        if (matches == null) {
+            matches = new LinkedHashMap<>();
+            index.put(identity, matches);
+        }
+        JSONObject previous = matches.get(hex);
+        if (previous == null
+                || positionAgeSeconds(candidate) < positionAgeSeconds(previous)) {
+            matches.put(hex, candidate);
+        }
+    }
+
+    private static String uniqueMatchingRealHex(
+            JSONObject synthetic,
+            Map<String, Map<String, JSONObject>> byRegistration,
+            Map<String, Map<String, JSONObject>> byCallsign) {
+        String registration = normalizedRegistration(synthetic);
+        Map<String, JSONObject> registrationMatches = new LinkedHashMap<>();
+        Map<String, JSONObject> motionMatches = new LinkedHashMap<>();
+        String callsign = identityCallsign(synthetic);
+        if (!callsign.matches("[A-Z0-9]{4,8}")) callsign = "";
+        Map<String, JSONObject> registrationCandidates = byRegistration.get(registration);
+        if (registrationCandidates != null) {
+            for (Map.Entry<String, JSONObject> entry : registrationCandidates.entrySet()) {
+                if (positionsNear(synthetic, entry.getValue(), 50d)) {
+                    registrationMatches.put(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+        Map<String, JSONObject> motionCandidates = byCallsign.get(callsign);
+        if (motionCandidates != null) {
+            for (Map.Entry<String, JSONObject> entry : motionCandidates.entrySet()) {
+                if (sameMovingContact(synthetic, entry.getValue())) {
+                    motionMatches.put(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+        if (registrationMatches.size() == 1) {
+            return registrationMatches.keySet().iterator().next();
+        }
+        return motionMatches.size() == 1
+                ? motionMatches.keySet().iterator().next() : "";
+    }
+
+    private static boolean sameMovingContact(JSONObject first, JSONObject second) {
+        if (!positionsNear(first, second, 12d)) return false;
+        boolean comparedKinematics = false;
+        double firstAltitude = altitudeFeet(first);
+        double secondAltitude = altitudeFeet(second);
+        if (!Double.isNaN(firstAltitude) && !Double.isNaN(secondAltitude)) {
+            comparedKinematics = true;
+            if (Math.abs(firstAltitude - secondAltitude) > 1_500d) return false;
+        }
+        double firstSpeed = speedKnots(first);
+        double secondSpeed = speedKnots(second);
+        if (!Double.isNaN(firstSpeed) && !Double.isNaN(secondSpeed)) {
+            comparedKinematics = true;
+            if (Math.abs(firstSpeed - secondSpeed) > 80d) return false;
+        }
+        if (firstSpeed >= 80d && secondSpeed >= 80d) {
+            double firstTrack = first.optDouble("track", Double.NaN);
+            double secondTrack = second.optDouble("track", Double.NaN);
+            if (!Double.isNaN(firstTrack) && !Double.isNaN(secondTrack)) {
+                double difference = Math.abs(
+                        ((firstTrack - secondTrack + 540d) % 360d) - 180d);
+                if (difference > 60d) return false;
+            }
+        }
+        return comparedKinematics;
+    }
+
+    private static boolean positionsNear(
+            JSONObject first, JSONObject second, double maximumKm) {
+        double[] firstPosition = recentPosition(first, 90d);
+        double[] secondPosition = recentPosition(second, 90d);
+        if (firstPosition == null || secondPosition == null) return false;
+        double distance = DistanceCalculator.kilometers(firstPosition[0], firstPosition[1],
+                secondPosition[0], secondPosition[1]);
+        return !Double.isNaN(distance) && distance <= maximumKm;
+    }
+
+    private static String identityCallsign(JSONObject aircraft) {
+        if (aircraft == null) return "";
+        return normalizeCallsign(aircraft.optString("flight",
+                aircraft.optString("callsign", "")));
+    }
+
+    private static String normalizedRegistration(JSONObject aircraft) {
+        if (aircraft == null) return "";
+        for (String key : new String[]{"r", "registration", "reg"}) {
+            String registration = aircraft.optString(key, "");
+            if (meaningful(registration)) {
+                return registration.trim().toUpperCase(Locale.US)
+                        .replaceAll("[^A-Z0-9]", "");
+            }
+        }
+        return "";
+    }
+
+    private static double altitudeFeet(JSONObject aircraft) {
+        if (aircraft == null) return Double.NaN;
+        for (String key : new String[]{"alt_geom", "alt_baro", "altitude_ft",
+                "geometric_altitude_ft", "barometric_altitude_ft"}) {
+            Object value = aircraft.opt(key);
+            if (value instanceof Number) return ((Number) value).doubleValue();
+            if (value instanceof String
+                    && "ground".equalsIgnoreCase(((String) value).trim())) return 0d;
+        }
+        return Double.NaN;
+    }
+
+    private static double speedKnots(JSONObject aircraft) {
+        if (aircraft == null) return Double.NaN;
+        double speed = aircraft.optDouble("gs", Double.NaN);
+        return Double.isNaN(speed)
+                ? aircraft.optDouble("speed_knots", Double.NaN) : speed;
+    }
+
+    private static boolean isNonIcao(JSONObject aircraft) {
+        return aircraft != null && (aircraft.optBoolean("non_icao", false)
+                || aircraft.optString("hex", "").trim().startsWith("~"));
     }
 
     static JSONArray withoutTisbAircraft(JSONArray source) {
