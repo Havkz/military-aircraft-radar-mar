@@ -10,7 +10,9 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.util.LinkedHashSet;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
@@ -70,6 +72,16 @@ final class AircraftPhotoLookup {
                 mergeMissing(planespotting, planespottingMetadata);
                 if (result.length() == 0) result = planespotting;
                 else mergeMissing(result, planespotting);
+            } catch (Exception ignored) { }
+        }
+        if (!result.has("image") && !resolvedNormalized.isEmpty()) {
+            try {
+                JSONObject jetPhotos = findJetPhotos(
+                        resolvedRegistration, aircraftType);
+                if (jetPhotos.length() > 0) {
+                    if (result.length() > 0) mergeMissing(jetPhotos, result);
+                    result = jetPhotos;
+                }
             } catch (Exception ignored) { }
         }
         if (needsAircraftDatabaseFallback(result)) {
@@ -170,6 +182,84 @@ final class AircraftPhotoLookup {
                 hex, firstMeaningful(registration, search.optString("registration")));
         mergeMissing(search, detail);
         return search;
+    }
+
+    private static JSONObject findJetPhotos(String registration, String aircraftType)
+            throws Exception {
+        String query = "site:jetphotos.com/photo \"" + registration.trim() + "\"";
+        String html = get("https://search.brave.com/search?q="
+                + URLEncoder.encode(query, "UTF-8") + "&source=web");
+        for (String link : parseJetPhotosSearchLinks(html)) {
+            JSONObject photo = parseJetPhotos(
+                    get(link), registration, aircraftType);
+            if (photo.length() > 0) return photo;
+        }
+        return new JSONObject();
+    }
+
+    static Set<String> parseJetPhotosSearchLinks(String html) {
+        Set<String> links = new LinkedHashSet<>();
+        Matcher matcher = Pattern.compile(
+                "https://www\\.jetphotos\\.com/photo/\\d+")
+                .matcher(html == null ? "" : html);
+        while (matcher.find() && links.size() < 5) links.add(matcher.group());
+        return links;
+    }
+
+    static JSONObject parseJetPhotos(String html, String expectedRegistration,
+                                      String expectedType) throws Exception {
+        String title = metaContent(html, "og:title");
+        String image = metaContent(html, "og:image");
+        String link = metaContent(html, "og:url");
+        String[] parts = title.split("\\s*\\|\\s*");
+        String expected = normalizeRegistration(expectedRegistration);
+        if (parts.length < 2 || expected.isEmpty()
+                || !expected.equals(normalizeRegistration(parts[0]))
+                || !image.matches("https://cdn\\.jetphotos\\.com/[^\\s\"'<>]+")
+                || !link.matches("https://www\\.jetphotos\\.com/photo/\\d+")
+                || !jetPhotosTypeMatches(parts[1], expectedType)) {
+            return new JSONObject();
+        }
+        JSONObject result = photo(image.replace("/full/", "/400/"), link,
+                "JetPhotos", parts.length > 3 ? parts[parts.length - 2] : "");
+        result.put("registration", expectedRegistration.trim().toUpperCase(Locale.US));
+        putIfText(result, "description", parts[1]);
+        if (parts.length > 2 && !"private".equalsIgnoreCase(parts[2].trim())) {
+            putIfText(result, "operator", parts[2]);
+        }
+        copyOperatorToAirline(result);
+        result.put("metadata_source", "JetPhotos");
+        result.put("metadata_verified", true);
+        return result;
+    }
+
+    private static String metaContent(String html, String property) {
+        String source = html == null ? "" : html;
+        Matcher matcher = Pattern.compile("(?is)<meta[^>]+(?:property|name)=[\"']"
+                + Pattern.quote(property) + "[\"'][^>]+content=[\"']([^\"']+)[\"']")
+                .matcher(source);
+        if (matcher.find()) return cleanHtml(matcher.group(1));
+        matcher = Pattern.compile("(?is)<meta[^>]+content=[\"']([^\"']+)[\"']"
+                + "[^>]+(?:property|name)=[\"']" + Pattern.quote(property)
+                + "[\"']").matcher(source);
+        if (matcher.find()) {
+            return cleanHtml(matcher.group(1));
+        }
+        return "";
+    }
+
+    private static boolean jetPhotosTypeMatches(String model, String expectedType) {
+        String expected = normalizeAircraftType(expectedType);
+        if (expected.isEmpty()) return true;
+        String actual = model == null ? "" : model.toUpperCase(Locale.US)
+                .replaceAll("[^A-Z0-9]", "");
+        if (actual.contains(expected)) return true;
+        Matcher boeing = Pattern.compile("B(7\\d)(\\d)").matcher(expected);
+        if (boeing.matches() && actual.contains(
+                "BOEING" + boeing.group(1) + boeing.group(2) + "00")) return true;
+        if ("B38M".equals(expected)) return actual.contains("BOEING737MAX8");
+        if ("B39M".equals(expected)) return actual.contains("BOEING737MAX9");
+        return false;
     }
 
     private static boolean needsAircraftDatabaseFallback(JSONObject result) {
